@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="#0b0e1a" android:padding="30dp">
+
+    <TextView android:text="⚡ FORTNITE ROOT HACK ⚡" android:textSize="28sp" android:textColor="#00f0c0" android:layout_gravity="center" android:layout_marginBottom="40dp"/>
+
+    <Switch android:id="@+id/swAimbot" android:text="Aimbot" android:textColor="#fff" android:textSize="18sp"/>
+    <Switch android:id="@+id/swESP" android:text="Wallhack / ESP" android:textColor="#fff" android:textSize="18sp"/>
+    <!-- more switches -->
+
+    <TextView android:id="@+id/status" android:text="Status: Ready" android:textColor="#00d4aa"/>
+</LinearLayout>
