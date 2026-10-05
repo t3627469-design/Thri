@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { initFishing } from './fishing.js';
 
 /* =====================================================================
    Still Water — scene geometry comes from Blender (pond.glb).
@@ -600,6 +601,17 @@ class Ambience {
     };
     setTimeout(next, 3000);
   }
+  sfx(kind) {
+    if (!this.ctx || !this.on) return;
+    const seq = {
+      cast: [[196, 0], [147, 0.08]], splash: [[330, 0]], bite: [[880, 0], [1175, 0.1], [880, 0.2]],
+      hook: [[392, 0], [523, 0.07]], miss: [[294, 0], [220, 0.14], [165, 0.28]],
+      win: [[523, 0], [659, 0.1], [784, 0.2], [1047, 0.32]],
+      legend: [[392, 0], [523, 0.1], [659, 0.2], [784, 0.3], [1047, 0.42], [1319, 0.56], [1568, 0.72]],
+      up: [[440, 0], [554, 0.09], [659, 0.18]],
+    }[kind] || [];
+    seq.forEach(([f, d]) => setTimeout(() => this.pluck(f, kind === 'miss' ? 0.07 : 0.1), d * 1000));
+  }
   toggle() {
     if (!this.ctx) this.init();
     this.on = !this.on;
@@ -613,6 +625,7 @@ const audio = new Ambience();
 
 /* ----------------------------- load the scene ---------------------------- */
 window.__pond = { scene, camera, controls, U, renderer, composer, LITE };
+let fishing = null;
 const state = { koi: [], ducks: {}, bflies: [], last: performance.now(), shot: false, started: false };
 
 async function loadGLB() {
@@ -713,6 +726,8 @@ function setup(gltf) {
   // find cherry tree position for falling petals (pinkish foliage); fixed from build script
   makePetals(11.8, -4.2);
 
+  fishing = initFishing({ scene, camera, controls, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey });
+
   // keep camera out of the ground
   controls.addEventListener('change', () => {
     const g = Math.max(hAt(camera.position.x, camera.position.z) + 0.6, WATER_Y + 0.45);
@@ -738,6 +753,7 @@ function animate() {
   applyTime(dt);
 
   if (state.started) {
+    if (fishing) fishing.update(dt, t);
     // ducks
     const { drake: dk, hen: hn, chicks } = state.ducks;
     if (dk) {
@@ -808,7 +824,10 @@ setInterval(() => {
 }, 14000);
 
 $('sound').addEventListener('click', () => { const on = audio.toggle(); $('sound').classList.toggle('on', on); $('sound').textContent = on ? '🔊 Sound on' : '🔈 Sound off'; });
-$('orbit').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; $('orbit').classList.toggle('on', controls.autoRotate); });
+$('orbit').addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate; $('orbit').classList.toggle('on', controls.autoRotate);
+  if (controls.autoRotate && fishing) fishing.resetCamera();
+});
 $('shot').addEventListener('click', () => (state.shot = true));
 $('hide').addEventListener('click', () => document.body.classList.toggle('clean'));
 addEventListener('keydown', (e) => {
@@ -825,7 +844,9 @@ canvas.addEventListener('pointerup', (e) => {
   const ndc = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   const rc = new THREE.Raycaster(); rc.setFromCamera(ndc, camera);
   const hit = rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y), new THREE.Vector3());
+  if (fishing && fishing.busy()) return;
   if (hit && hAt(hit.x, hit.z) < WATER_Y - 0.05) {
+    if (fishing && fishing.onWaterClick(hit)) return;
     addRipple(hit.x, hit.z, 1.3);
     if (audio.on) audio.pluck(523.25 * Math.pow(2, [0, 2, 4, 7, 9][(Math.random() * 5) | 0] / 12), 0.1);
   }

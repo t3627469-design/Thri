@@ -22,7 +22,7 @@
   body.ready .title, body.ready .bar { opacity:1; }
   .title b { display:block; font:300 22px/1.1 "Iowan Old Style","Palatino Linotype",Georgia,serif; letter-spacing:.2em; text-transform:uppercase; }
   .title span { opacity:.75; font-size:12px; letter-spacing:.12em; text-transform:uppercase; }
-  .bar { position:fixed; left:50%; bottom:max(16px,env(safe-area-inset-bottom)); transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:calc(100vw - 24px); opacity:0; transition:opacity 2s 3s, transform .5s; }
+  .bar { position:fixed; left:50%; bottom:max(16px,env(safe-area-inset-bottom)); transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:8px; width:max-content; max-width:calc(100vw - 24px); opacity:0; transition:opacity 2s 3s, transform .5s; }
   .grp { display:flex; gap:4px; padding:4px; border-radius:999px; background:var(--glass); border:1px solid var(--edge); backdrop-filter:blur(14px) saturate(1.3); -webkit-backdrop-filter:blur(14px) saturate(1.3); }
   button { font:inherit; color:inherit; background:transparent; border:0; padding:9px 14px; border-radius:999px; cursor:pointer; transition:background .25s, color .25s; white-space:nowrap; }
   button:hover { background:rgba(255,255,255,.14); }
@@ -31,16 +31,63 @@
   .hint { position:fixed; right:max(18px,env(safe-area-inset-right)); top:max(16px,env(safe-area-inset-top)); font-size:12px; opacity:.6; text-align:right; pointer-events:none; text-shadow:0 1px 10px rgba(0,0,0,.5); }
   body.clean .bar, body.clean .title, body.clean .hint { opacity:0 !important; pointer-events:none; transition:opacity .4s; }
   body.clean .bar { transform:translateX(-50%) translateY(20px); }
-  @media (max-width:640px){ .hint{display:none} button{padding:8px 11px} }
+  @media (max-width:640px){ .hint{display:none} }
+
+  /* ---- fishing game ---- */
+  .hud { display:flex; gap:14px; margin-top:8px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; opacity:.9; }
+  .hud b { font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; margin-left:4px; }
+  button.cast { background:rgba(255,236,200,.92); color:#2a2418; font-weight:700; min-width:96px; }
+  button.cast:hover { background:#fff3dc; }
+  button.cast.hot { background:#ff6a3d; color:#fff; animation:pulse .35s ease-in-out infinite alternate; }
+  @keyframes pulse { to { transform:scale(1.07); } }
+  #status { position:fixed; left:50%; bottom:calc(max(16px,env(safe-area-inset-bottom)) + 84px); transform:translateX(-50%) translateY(6px); padding:8px 16px; border-radius:999px; background:var(--glass); border:1px solid var(--edge); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); opacity:0; pointer-events:none; transition:opacity .35s, transform .35s; text-align:center; max-width:calc(100vw - 32px); }
+  #status.show { opacity:1; transform:translateX(-50%); }
+  body[data-fish=mini] #status { opacity:0; }
+  body[data-fish=bite] #status { background:#ff6a3d; border-color:#ffb199; font-weight:700; }
+  /* catch bar lives in the bottom half of the screen */
+  #mini { position:fixed; left:50%; bottom:calc(max(16px,env(safe-area-inset-bottom)) + 82px); transform:translateX(-50%); width:min(700px,calc(100vw - 32px)); padding:14px 16px 16px; border-radius:20px; background:rgba(10,18,15,.62); border:1px solid var(--edge); backdrop-filter:blur(14px) saturate(1.2); -webkit-backdrop-filter:blur(14px) saturate(1.2); touch-action:none; user-select:none; -webkit-user-select:none; cursor:pointer; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+  #mini.good { border-color:rgba(160,255,180,.55); }
+  .mini-top { display:flex; justify-content:space-between; gap:12px; margin-bottom:10px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+  .mini-top span:last-child { opacity:.65; text-align:right; }
+  #track { position:relative; height:52px; border-radius:12px; background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02)), #11241f; border:1px solid rgba(255,255,255,.14); overflow:hidden; }
+  #zone { position:absolute; top:3px; bottom:3px; left:0; border-radius:9px; background:rgba(255,255,255,.22); border:2px solid rgba(255,255,255,.7); box-shadow:0 0 14px rgba(255,255,255,.18); }
+  #zone.on { background:rgba(130,255,160,.38); border-color:#9dffb4; box-shadow:0 0 18px rgba(130,255,160,.5); }
+  #fishIcon { position:absolute; top:50%; left:50%; width:46px; margin-top:-12px; height:24px; transform:translateX(-50%); pointer-events:none; filter:drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+  #fishIcon svg { width:100%; height:100%; display:block; }
+  .prog { margin-top:12px; height:9px; border-radius:6px; background:rgba(255,255,255,.12); overflow:hidden; }
+  #progFill { display:block; height:100%; width:30%; border-radius:6px; background:linear-gradient(90deg,#ffd98a,#9dffb4); }
+  #card { position:fixed; left:50%; top:max(88px,12vh); transform:translateX(-50%) translateY(-10px) scale(.96); display:flex; align-items:center; gap:16px; padding:14px 22px 14px 16px; border-radius:18px; background:rgba(10,18,15,.7); border:1px solid var(--rc,#fff); box-shadow:0 0 28px color-mix(in srgb, var(--rc,#fff) 40%, transparent), 0 12px 40px rgba(0,0,0,.4); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); opacity:0; pointer-events:none; transition:opacity .35s, transform .35s; max-width:calc(100vw - 32px); }
+  #card.show { opacity:1; transform:translateX(-50%) scale(1); }
+  .cicon { width:96px; flex:none; } .cicon svg { width:100%; display:block; filter:drop-shadow(0 4px 8px rgba(0,0,0,.4)); }
+  .ctext { display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .ctext b { font:600 22px/1.15 "Iowan Old Style","Palatino Linotype",Georgia,serif; }
+  .rar { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--rc,#fff); font-weight:700; }
+  .meta { font-size:12px; opacity:.75; }
+  #journal { position:fixed; inset:0; z-index:8; display:grid; place-items:center; padding:16px; background:rgba(5,10,8,.55); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+  #journal[hidden] { display:none; }
+  .jbox { width:min(720px,100%); max-height:calc(100% - 8px); overflow:auto; padding:20px; border-radius:22px; background:rgba(16,28,23,.92); border:1px solid var(--edge); }
+  .jhead { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .jhead h2 { margin:0; font:300 22px/1 "Iowan Old Style","Palatino Linotype",Georgia,serif; letter-spacing:.16em; text-transform:uppercase; }
+  .jhead small { opacity:.7; letter-spacing:.06em; }
+  #jgrid { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .fcard { display:flex; flex-direction:column; gap:2px; padding:12px; border-radius:14px; background:rgba(255,255,255,.05); border:1px solid color-mix(in srgb, var(--rc) 55%, transparent); min-width:0; }
+  .fcard.unk { opacity:.6; border-color:rgba(255,255,255,.12); }
+  .ficon svg { width:70%; display:block; margin-bottom:8px; }
+  .fcard b { font-size:14px; } .fcard .meta { font-size:11px; }
+  .jfoot { margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  #upgrade { background:rgba(255,236,200,.92); color:#2a2418; font-weight:600; } #upgrade:disabled { opacity:.45; cursor:default; }
+  @media (max-width:1040px){ #mini{ bottom:calc(max(16px,env(safe-area-inset-bottom)) + 140px); } #status{ bottom:calc(max(16px,env(safe-area-inset-bottom)) + 142px); } }
+  @media (max-width:640px){ #mini{ bottom:calc(max(16px,env(safe-area-inset-bottom)) + 176px); } #status{ bottom:calc(max(16px,env(safe-area-inset-bottom)) + 176px); } .grp{ flex-wrap:wrap; justify-content:center; } button{ padding:8px 9px; font-size:13px; } #card{ top:max(110px,14vh); } .cicon{ width:72px; } }
   @media (prefers-reduced-motion:reduce){ .ring{animation-duration:3s} }
 </style>
 </head>
 <body>
 <canvas id="c" aria-label="A peaceful pond with grass, lily pads, ducks and koi. Drag to look around."></canvas>
 <div class="vig"></div>
-<div class="title"><b>Still Water</b><span id="mood">Golden hour</span></div>
-<div class="hint">drag to look around · scroll to zoom · click the water<br>1–4 time of day · H hides the interface</div>
+<div class="title"><b>Still Water</b><span id="mood">Golden hour</span><div class="hud"><span>Coins<b id="coins">0</b></span><span>Rod<b id="rodLv">1</b></span></div></div>
+<div class="hint">Space or click the water: cast · Space: hook it, then hold to reel<br>J journal · 1–4 time of day · H hides the interface</div>
 <div class="bar" role="toolbar" aria-label="Controls">
+  <div class="grp"><button id="cast" class="cast">🎣 Cast</button><button id="journalBtn">📖 Journal</button></div>
   <div class="grp" role="group" aria-label="Time of day">
     <button data-time="golden" class="on">🌅 Golden</button>
     <button data-time="midday">☀️ Day</button>
@@ -53,6 +100,20 @@
     <button id="orbit" class="on">Orbit</button>
     <button id="shot" title="Save a picture">📷</button>
     <button id="hide" title="Hide interface (H)">⤢</button>
+  </div>
+</div>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="mini" hidden aria-label="Catch bar: hold to move the zone right, release to let it fall back">
+  <div class="mini-top"><span id="miniName">Hooked something…</span><span id="miniHint">Hold to move right · release to fall back</span></div>
+  <div id="track"><div id="zone"></div><div id="fishIcon"></div></div>
+  <div class="prog"><i id="progFill"></i></div>
+</div>
+<div id="card" role="status"></div>
+<div id="journal" hidden>
+  <div class="jbox" role="dialog" aria-label="Fishing journal">
+    <div class="jhead"><h2>Journal</h2><small><span id="jfound"></span> · <span id="jcoins">0</span> coins</small><button id="jclose">Close</button></div>
+    <ul id="jgrid"></ul>
+    <div class="jfoot"><button id="upgrade">Upgrade rod</button><small>A better rod widens the catch zone and shortens the wait.</small></div>
   </div>
 </div>
 <div id="loader"><h1>Still Water</h1><div class="ring"></div><p id="loadmsg">Waking up…</p></div>
