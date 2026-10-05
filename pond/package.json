@@ -1,0 +1,11 @@
+{
+  "name": "still-water-pond",
+  "private": true,
+  "description": "Peaceful 3D pond: scene authored in Blender (build_pond.py), shown with three.js",
+  "scripts": {
+    "blender": "python3 build_pond.py",
+    "build": "node build.mjs"
+  },
+  "dependencies": { "three": "^0.186.1" },
+  "devDependencies": { "esbuild": "^0.25.0" }
+}
