@@ -20,6 +20,7 @@ Cast from the dock, wait for the bobber to dip, hook it, then win the catch bar 
 - **Space** or click the water: cast · **Space** at the bite: hook it · **hold** Space / mouse / touch: move the zone right, release: it falls back left
 - Keep the zone over the fish to fill the bar; if it drains to zero the fish escapes
 - 9 species from Common to Legendary; Moonlit Pike bites at night, Ember Carp at dusk
+- A short guided tutorial runs the first time (an easy fish, skippable); the **?** button replays it
 - Coins buy rod upgrades (wider zone, shorter wait). **J** opens the journal. Progress is saved in your browser.
 
 ## How it's made

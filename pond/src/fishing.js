@@ -43,6 +43,8 @@ export function initFishing(ctx) {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s && typeof s === 'object') save = { ...save, ...s }; } catch (e) { /* storage unavailable */ }
   const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* ignore */ } };
 
+  const tut = { active: false, step: 0, retry: false };
+
   /* --------------------------- dock / rod placement ---------------------- */
   const TH = -Math.PI / 2 - 0.35;               // same angle as the dock in build_pond.py
   const R = shoreR(TH);
@@ -97,18 +99,48 @@ export function initFishing(ctx) {
 
   /* ---------------------------------- UI --------------------------------- */
   const el = {
-    status: $('status'), mini: $('mini'), miniName: $('miniName'), miniHint: $('miniHint'),
-    track: $('track'), zone: $('zone'), fish: $('fishIcon'), fill: $('progFill'),
+    status: $('status'), mini: $('mini'), arrow: $('arrow'), note: $('miniNote'),
+    coach: $('coach'), coachTitle: $('coachTitle'), coachBody: $('coachBody'), dots: $('cdots'), skip: $('coachSkip'), next: $('coachNext'),
+    track: $('track'), zone: $('zone'), fishFi: null, fish: $('fishIcon'), fill: $('progFill'),
     card: $('card'), journal: $('journal'), cast: $('cast'), coins: $('coins'), rodLv: $('rodLv'),
     grid: $('jgrid'), upgrade: $('upgrade'), jcoins: $('jcoins'),
   };
   let statusTimer = 0;
   function say(text, sticky = false) {
+    if (tut.active) return;
     el.status.textContent = text; el.status.classList.add('show');
     clearTimeout(statusTimer);
     if (!sticky) statusTimer = setTimeout(() => el.status.classList.remove('show'), 2600);
   }
   function hud() { el.coins.textContent = save.coins; el.rodLv.textContent = save.rod; }
+
+  /* ------------------------------- tutorial ------------------------------ */
+  const TUT = [
+    ['Cast your line', 'Press the Cast button or Space. You can also click the water to aim.'],
+    ['Wait for it…', 'Watch the bobber. When it dips, a fish has bitten.'],
+    ['It bit!', 'Press Space, or tap, right now to hook it.'],
+    ['Reel it in', 'Tap and hold anywhere to move the white bar right. Let go and it slides back left.'],
+    ['Follow the fish', 'Keep the white bar over the fish marker to fill the progress bar. Do not let it run dry.'],
+    ['Nice catch!', 'Fish go in your journal (J). Selling them earns coins, and coins upgrade your rod. That is everything you need.'],
+  ];
+  function tutShow(step) {
+    tut.step = step; tut.t = 0;
+    el.coach.hidden = false;
+    el.coachTitle.textContent = TUT[step][0]; el.coachBody.textContent = TUT[step][1];
+    el.dots.innerHTML = TUT.map((_, i) => `<i class="${i === step ? 'on' : i < step ? 'done' : ''}"></i>`).join('');
+    el.cast.classList.toggle('hl', step === 0);
+    $('track').classList.toggle('hl', step === 3 || step === 4);
+    el.next.hidden = step !== 5; el.skip.hidden = step === 5;
+    el.coach.classList.toggle('low', step === 5);
+  }
+  function tutStart() { if (f.state !== 'idle') return; tut.active = true; tut.retry = false; el.status.classList.remove('show'); tutShow(0); }
+  function tutEnd() {
+    tut.active = false; el.coach.hidden = true; el.cast.classList.remove('hl'); $('track').classList.remove('hl');
+    save.tutorial = true; persist(); say('Press Space or click the water to cast');
+  }
+  el.skip.addEventListener('click', tutEnd);
+  el.next.addEventListener('click', tutEnd);
+  $('help').addEventListener('click', () => { if (f.state === 'idle') tutStart(); else say('Finish this cast first, then tap ? again'); });
   const speciesById = Object.fromEntries(SPECIES.map((s) => [s.id, s]));
 
   function renderJournal() {
@@ -193,6 +225,7 @@ export function initFishing(ctx) {
   function cast(aim) {
     if (f.state !== 'idle') return;
     enterFishView();
+    if (tut.active && tut.step === 0) tutShow(1);
     el.card.classList.remove('show');
     f.target = chooseTarget(aim);
     f.from.copy(tip);
@@ -210,13 +243,15 @@ export function initFishing(ctx) {
   }
   function hook() {
     f.sp = f.sp || pickSpecies();
+    if (tut.active) { f.sp = speciesById.minnow; tutShow(3); }
     const s = f.sp;
-    m.zw = clamp(0.27 - s.diff * 0.11 + (save.rod - 1) * 0.032, 0.11, 0.42);
+    m.zw = clamp(0.4 - s.diff * 0.16 + (save.rod - 1) * 0.03 + (tut.active ? 0.1 : 0), 0.2, 0.62);
     m.c = 0.5; m.vel = 0; m.fp = 0.5; m.ftarget = 0.5; m.ftimer = 0; m.prog = 0.32; m.hold = false;
     el.zone.style.width = (m.zw * 100) + '%';
-    el.fish.innerHTML = fishSVG(s.c[0], s.c[1]);
-    el.miniName.textContent = 'Hooked something…';
-    el.miniName.style.removeProperty('color');
+    el.fish.innerHTML = `<div class="fi">${fishSVG('#aab1ba', '#8a929c')}</div><b class="mk"></b>`;
+    el.fishFi = el.fish.querySelector('.fi');
+    el.note.textContent = `+${Math.round((save.rod - 1) * 7)}% Progress Speed`;
+    el.arrow.textContent = '←';
     el.mini.hidden = false; el.status.classList.remove('show');
     controls.enabled = false;
     addRipple(f.target.x, f.target.z, 1.2);
@@ -233,7 +268,7 @@ export function initFishing(ctx) {
 
   function finish(win) {
     const s = f.sp;
-    if (!win) { f.sp = null; reelIn('It slipped away…', 'miss'); return; }
+    if (!win) { f.sp = null; if (tut.active) tut.retry = true; reelIn('It slipped away…', 'miss'); return; }
     const kg = +(s.w[0] + Math.pow(Math.random(), 1.6) * (s.w[1] - s.w[0])).toFixed(2);
     const mid = (s.w[0] + s.w[1]) / 2;
     const value = Math.round(rand(s.val[0], s.val[1]) * (0.85 + 0.3 * kg / mid));
@@ -250,7 +285,7 @@ export function initFishing(ctx) {
     audio.sfx(s.rarity >= 3 ? 'legend' : 'win');
     f.sp = null;
     reelIn('', null);
-    say('Press Space to cast again');
+    if (tut.active) tutShow(5); else say('Press Space to cast again');
   }
 
   /* -------------------------------- update ------------------------------- */
@@ -278,7 +313,7 @@ export function initFishing(ctx) {
         slack = 0.1;
         if (k >= 1) {
           addRipple(f.target.x, f.target.z, 1.1); audio.sfx('splash');
-          f.wait = rand(2.4, 6.5) * (1 - (save.rod - 1) * 0.1); f.sp = null; f.ripT = 1.2;
+          f.wait = tut.active ? rand(1.3, 2.2) : rand(2.4, 6.5) * (1 - (save.rod - 1) * 0.1); f.sp = null; f.ripT = 1.2;
           setState('wait'); say('Wait for the bobber to dip…', true);
         }
         break;
@@ -286,7 +321,7 @@ export function initFishing(ctx) {
       case 'wait': {
         bob.copy(f.target); bob.y = WATER_Y + 0.03 + Math.sin(t * 2.1) * 0.012;
         f.ripT -= dt; if (f.ripT < 0) { f.ripT = rand(1.6, 3.2); addRipple(f.target.x + rand(-0.2, 0.2), f.target.z + rand(-0.2, 0.2), 0.25); }
-        if (f.t > f.wait) { f.sp = pickSpecies(); f.bite = 1.35; setState('bite'); say('Bite! Press Space now!', true); audio.sfx('bite'); addRipple(f.target.x, f.target.z, 1.4); }
+        if (f.t > f.wait) { f.sp = tut.active ? speciesById.minnow : pickSpecies(); f.bite = tut.active ? 999 : 1.35; if (tut.active) tutShow(2); setState('bite'); say('Bite! Press Space now!', true); audio.sfx('bite'); addRipple(f.target.x, f.target.z, 1.4); }
         break;
       }
       case 'bite': {
@@ -314,22 +349,23 @@ export function initFishing(ctx) {
           m.ftarget = clamp(m.fp + step, 0.04, 0.96);
           m.dart = Math.random() < s.diff * 0.35 ? 1 : 0;
         }
-        const sp = 1.7 + s.diff * 3.4 + (m.dart ? 3 : 0);
+        if (tut.active && tut.step === 3 && f.t > 4.5) tutShow(4);
+        const sp = (1.7 + s.diff * 3.4 + (m.dart ? 3 : 0)) * (tut.active ? 0.7 : 1);
         const prev = m.fp;
         m.fp += (m.ftarget - m.fp) * Math.min(1, dt * sp);
         if (Math.abs(m.fp - prev) > 1e-4) m.face = m.fp > prev ? -1 : 1;
         // progress
         const inside = Math.abs(m.fp - m.c) < m.zw / 2 + 0.01;
-        const gain = 0.3 * (1 + (save.rod - 1) * 0.07);
-        m.prog += (inside ? gain : -(0.16 + s.diff * 0.2)) * dt;
+        const gain = 0.26 * (1 + (save.rod - 1) * 0.07) * (tut.active ? 1.5 : 1);
+        m.prog += (inside ? gain : -(0.18 + s.diff * 0.25) * (tut.active ? 0.35 : 1)) * dt;
         m.prog = clamp(m.prog, 0, 1);
         // draw
         el.zone.style.left = ((m.c - m.zw / 2) * 100) + '%';
         el.fish.style.left = (m.fp * 100) + '%';
-        el.fish.style.transform = `translateX(-50%) scaleX(${m.face})`;
+        if (el.fishFi) el.fishFi.style.transform = `scaleX(${m.face})`;
+        el.arrow.textContent = m.hold ? '→' : '←';
         el.fill.style.width = (m.prog * 100) + '%';
         el.zone.classList.toggle('on', inside);
-        el.mini.classList.toggle('good', inside);
         // bobber thrashes
         bob.copy(f.target); bob.x += Math.sin(t * 9) * 0.12; bob.z += Math.cos(t * 7.3) * 0.12; bob.y = WATER_Y + 0.02 + Math.abs(Math.sin(t * 11)) * 0.05;
         f.ripT -= dt; if (f.ripT < 0) { f.ripT = 0.4; addRipple(bob.x, bob.z, 0.55); }
@@ -342,7 +378,13 @@ export function initFishing(ctx) {
         const k = Math.min(1, f.t / 0.55);
         bob.lerpVectors(f.from, tip, k * k); bob.y += Math.sin(Math.PI * k) * 0.8;
         slack = 0.2 * (1 - k);
-        if (k >= 1) { bobber.visible = line.visible = false; setState('idle'); }
+        if (k >= 1) {
+          bobber.visible = line.visible = false; setState('idle');
+          if (tut.active && tut.step < 5) {
+            tutShow(0);
+            if (tut.retry) { el.coachTitle.textContent = 'Try again'; el.coachBody.textContent = 'It happens. Cast again, this fish is easy to follow.'; tut.retry = false; }
+          }
+        }
         break;
       }
     }
@@ -376,7 +418,7 @@ export function initFishing(ctx) {
   el.cast.addEventListener('keydown', (e) => { if (e.code === 'Space' || e.key === 'Enter') e.preventDefault(); });
 
   hud();
-  setTimeout(() => say('Press Space or click the water to cast', false), 6500);
+  setTimeout(() => { if (!save.tutorial) tutStart(); else say('Press Space or click the water to cast'); }, 6500);
 
   return {
     update,

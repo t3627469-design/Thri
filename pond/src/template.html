@@ -44,18 +44,39 @@
   #status.show { opacity:1; transform:translateX(-50%); }
   body[data-fish=mini] #status { opacity:0; }
   body[data-fish=bite] #status { background:#ff6a3d; border-color:#ffb199; font-weight:700; }
-  /* catch bar lives in the bottom half of the screen */
-  #mini { position:fixed; left:50%; bottom:calc(max(16px,env(safe-area-inset-bottom)) + 82px); transform:translateX(-50%); width:min(700px,calc(100vw - 32px)); padding:14px 16px 16px; border-radius:20px; background:rgba(10,18,15,.62); border:1px solid var(--edge); backdrop-filter:blur(14px) saturate(1.2); -webkit-backdrop-filter:blur(14px) saturate(1.2); touch-action:none; user-select:none; -webkit-user-select:none; cursor:pointer; box-shadow:0 12px 40px rgba(0,0,0,.35); }
-  #mini.good { border-color:rgba(160,255,180,.55); }
-  .mini-top { display:flex; justify-content:space-between; gap:12px; margin-bottom:10px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
-  .mini-top span:last-child { opacity:.65; text-align:right; }
-  #track { position:relative; height:52px; border-radius:12px; background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02)), #11241f; border:1px solid rgba(255,255,255,.14); overflow:hidden; }
-  #zone { position:absolute; top:3px; bottom:3px; left:0; border-radius:9px; background:rgba(255,255,255,.22); border:2px solid rgba(255,255,255,.7); box-shadow:0 0 14px rgba(255,255,255,.18); }
-  #zone.on { background:rgba(130,255,160,.38); border-color:#9dffb4; box-shadow:0 0 18px rgba(130,255,160,.5); }
-  #fishIcon { position:absolute; top:50%; left:50%; width:46px; margin-top:-12px; height:24px; transform:translateX(-50%); pointer-events:none; filter:drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
-  #fishIcon svg { width:100%; height:100%; display:block; }
-  .prog { margin-top:12px; height:9px; border-radius:6px; background:rgba(255,255,255,.12); overflow:hidden; }
-  #progFill { display:block; height:100%; width:30%; border-radius:6px; background:linear-gradient(90deg,#ffd98a,#9dffb4); }
+  /* catch bar, bottom half of the screen */
+  #mini { position:fixed; left:50%; bottom:calc(max(16px,env(safe-area-inset-bottom)) + 82px); transform:translateX(-50%); width:min(720px,calc(100vw - 24px)); display:flex; flex-direction:column; align-items:center; padding:8px 0 2px; touch-action:none; user-select:none; -webkit-user-select:none; cursor:pointer; filter:drop-shadow(0 3px 10px rgba(0,0,0,.6)); }
+  #mini[hidden] { display:none; }
+  #miniTip { display:flex; align-items:center; gap:8px; margin-bottom:40px; font:800 17px/1 ui-rounded,"SF Pro Rounded",system-ui,sans-serif; letter-spacing:.02em; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.65); }
+  .bar-wrap { position:relative; width:100%; padding:0 22px; }
+  .cap { position:absolute; top:50%; margin-top:-6px; width:0; height:0; border-style:solid; border-color:transparent; }
+  .cap.l { left:4px; border-width:6px 0 6px 10px; border-left-color:#c98a2f; }
+  .cap.r { right:4px; border-width:6px 10px 6px 0; border-right-color:#c98a2f; }
+  #track { position:relative; height:30px; background:#0a0a1a; border:1px solid #23233c; }
+  #zone { position:absolute; top:0; bottom:0; left:0; background:#fff; display:flex; align-items:center; padding-left:12px; box-sizing:border-box; transition:box-shadow .15s; }
+  #zone.on { box-shadow:0 0 14px 2px rgba(255,255,255,.55); }
+  #arrow { font:700 22px/1 system-ui,sans-serif; color:#8a8f99; }
+  #fishIcon { position:absolute; top:0; left:50%; width:0; height:100%; pointer-events:none; }
+  #fishIcon .mk { position:absolute; left:-3px; top:-8px; bottom:-8px; width:6px; border-radius:3px; background:#9aa0aa; border:1px solid #4a4f58; box-shadow:0 0 6px rgba(0,0,0,.6); }
+  #fishIcon .fi { position:absolute; left:-23px; top:-38px; width:46px; height:23px; }
+  #fishIcon .fi svg { width:100%; height:100%; display:block; }
+  .prog { margin-top:20px; width:min(310px,64%); height:11px; border:2px solid #fff; background:#0a0a1a; box-sizing:content-box; }
+  #progFill { display:block; height:100%; width:30%; background:#fff; }
+  #miniNote { margin-top:8px; font:italic 12px system-ui,sans-serif; color:#aab3bd; text-shadow:0 1px 2px #000; }
+  .hl { animation:hl 1.1s ease-out infinite; }
+  @keyframes hl { 0% { box-shadow:0 0 0 0 rgba(255,217,160,.9); } 100% { box-shadow:0 0 0 16px rgba(255,217,160,0); } }
+  /* tutorial coach */
+  #coach { position:fixed; left:50%; top:max(96px,17vh); transform:translateX(-50%); width:min(440px,calc(100vw - 32px)); display:grid; grid-template-columns:1fr auto; gap:10px 14px; align-items:center; padding:14px 16px; border-radius:16px; background:rgba(10,18,15,.8); border:1px solid rgba(255,217,160,.5); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); box-shadow:0 12px 40px rgba(0,0,0,.4); z-index:5; }
+  #coach[hidden] { display:none; }
+  #coach.low { top:44%; }
+  .ct { display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .ct b { font-size:15px; letter-spacing:.04em; color:var(--accent); }
+  .ct span { font-size:13px; line-height:1.45; opacity:.92; }
+  .cdots { grid-column:1; display:flex; gap:6px; }
+  .cdots i { width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,.22); }
+  .cdots i.done { background:rgba(255,217,160,.55); } .cdots i.on { background:#ffd9a0; }
+  #coachSkip, #coachNext { grid-column:2; grid-row:1 / span 2; border:1px solid var(--edge); font-size:12px; }
+  #coachNext { background:rgba(255,236,200,.92); color:#2a2418; font-weight:700; }
   #card { position:fixed; left:50%; top:max(88px,12vh); transform:translateX(-50%) translateY(-10px) scale(.96); display:flex; align-items:center; gap:16px; padding:14px 22px 14px 16px; border-radius:18px; background:rgba(10,18,15,.7); border:1px solid var(--rc,#fff); box-shadow:0 0 28px color-mix(in srgb, var(--rc,#fff) 40%, transparent), 0 12px 40px rgba(0,0,0,.4); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); opacity:0; pointer-events:none; transition:opacity .35s, transform .35s; max-width:calc(100vw - 32px); }
   #card.show { opacity:1; transform:translateX(-50%) scale(1); }
   .cicon { width:96px; flex:none; } .cicon svg { width:100%; display:block; filter:drop-shadow(0 4px 8px rgba(0,0,0,.4)); }
@@ -87,7 +108,7 @@
 <div class="title"><b>Still Water</b><span id="mood">Golden hour</span><div class="hud"><span>Coins<b id="coins">0</b></span><span>Rod<b id="rodLv">1</b></span></div></div>
 <div class="hint">Space or click the water: cast · Space: hook it, then hold to reel<br>J journal · 1–4 time of day · H hides the interface</div>
 <div class="bar" role="toolbar" aria-label="Controls">
-  <div class="grp"><button id="cast" class="cast">🎣 Cast</button><button id="journalBtn">📖 Journal</button></div>
+  <div class="grp"><button id="cast" class="cast">🎣 Cast</button><button id="journalBtn">📖 Journal</button><button id="help" title="How to play" aria-label="How to play">?</button></div>
   <div class="grp" role="group" aria-label="Time of day">
     <button data-time="golden" class="on">🌅 Golden</button>
     <button data-time="midday">☀️ Day</button>
@@ -103,10 +124,18 @@
   </div>
 </div>
 <div id="status" role="status" aria-live="polite"></div>
-<div id="mini" hidden aria-label="Catch bar: hold to move the zone right, release to let it fall back">
-  <div class="mini-top"><span id="miniName">Hooked something…</span><span id="miniHint">Hold to move right · release to fall back</span></div>
-  <div id="track"><div id="zone"></div><div id="fishIcon"></div></div>
+<div id="mini" hidden aria-label="Catch bar: hold to move the white bar right, release to let it slide back">
+  <div id="miniTip">👆 Tap &amp; Hold Anywhere!</div>
+  <div class="bar-wrap"><i class="cap l"></i><i class="cap r"></i>
+    <div id="track"><div id="zone"><span id="arrow">←</span></div><div id="fishIcon"></div></div>
+  </div>
   <div class="prog"><i id="progFill"></i></div>
+  <div id="miniNote">+0% Progress Speed</div>
+</div>
+<div id="coach" hidden role="dialog" aria-live="polite" aria-label="Tutorial">
+  <div class="ct"><b id="coachTitle"></b><span id="coachBody"></span></div>
+  <div class="cdots" id="cdots"></div>
+  <button id="coachSkip">Skip</button><button id="coachNext" hidden>Got it</button>
 </div>
 <div id="card" role="status"></div>
 <div id="journal" hidden>
