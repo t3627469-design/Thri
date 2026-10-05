@@ -7,21 +7,24 @@ A peaceful 3D pond — **modelled in Blender**, shown live in the browser.
 Open **`index.html`** in any modern browser (single file, works offline).
 
 ## What's in it
-- Sculpted terrain with an irregular pond, rolling hills and a tree-lined horizon
-- ~28,000 individually modelled grass blades, reeds & cattails, wildflowers
-- Lily pads, lotus blossoms, mossy rocks, a wooden dock, a stone lantern
-- Mallard ducks with ducklings, koi under the surface, butterflies
-- Water with real planar reflections, caustics, shoreline foam, ripples (click it!)
-- Sky with clouds/stars, mist, falling cherry blossom petals, fireflies, bloom
-- Four times of day (Golden hour · Day · Twilight · Moonlight, keys `1`–`4`) and soft generated ambience (wind, water, birds, crickets, gentle chimes)
+- **Scene (modelled in Blender):** sculpted terrain and pond, ~28,000 grass blades, reeds, ferns, wildflowers, flowering bushes, lily pads, lotus, mossy rocks, trees, a wooden dock, stone lantern, rowboat, bench, mushrooms, a fallen log and a tackle shop stall
+- **Wildlife:** ducks with ducklings, koi under the surface, butterflies, frogs that hop between lily pads, dragonflies and birds
+- **Look:** planar water reflections, caustics, ripples, a sky with clouds, stars, a moon and shooting stars, god rays, mist, falling petals, fireflies, bloom and colour grading
+- **Four times of day** (keys `1`-`4`) and **weather** (`W`): rain darkens the light, fills the pond with ripples and brings out stormy fish
+- **Sound:** generated wind, water, birds, crickets, rain, frogs and soft chimes (no audio files)
 
-## Fishing game
+## The fishing game
 Cast from the dock, wait for the bobber to dip, hook it, then win the catch bar at the bottom of the screen.
-- **Space** or click the water: cast · **Space** at the bite: hook it · **hold** Space / mouse / touch: move the zone right, release: it falls back left
-- Keep the zone over the fish to fill the bar; if it drains to zero the fish escapes
-- 9 species from Common to Legendary; Moonlit Pike bites at night, Ember Carp at dusk
-- A short guided tutorial runs the first time (an easy fish, skippable); the **?** button replays it
-- Coins buy rod upgrades (wider zone, shorter wait). **J** opens the journal. Progress is saved in your browser.
+- **Space** or click the water to cast, **Space** at the bite, then **hold** (Space / mouse / touch) to move the white bar right and release to let it fall back. Keep it over the fish to fill the bar
+- **36 species** from Common to Mythic, each drawn from its own parameters (body shape, tail, fins, pattern). Mutations: Shiny, Albino, Giant
+- Time of day and weather change what bites. Catches land in your **bag**
+- **Tackle shop** (click the stall or press `B`): sell fish, buy 6 rods, 5 baits, 6 floats and a bigger bag. Gear is level gated
+- **Journal** (`J`): every species you have found, stats and mutations. Progress is saved in your browser
+- A guided tutorial runs on your first visit (replay with the help button)
+
+## Performance
+Quality is **Auto** by default: it lowers resolution, then features, when frames get slow, and climbs back when there is headroom. Pick Low, Medium or High in Settings, or add `?q=low` to the URL.
+Rendering is cheaper than a naive build: grass is split into chunks that are culled by distance, shadows update every few frames, reflections render at reduced size, and anti-aliasing is a single FXAA pass.
 
 ## How it's made
 | file | what |
@@ -29,7 +32,9 @@ Cast from the dock, wait for the bobber to dip, hook it, then win the catch bar 
 | `build_pond.py` | Blender (`bpy`) script that builds the whole scene, saves `pond.blend`, exports `pond.glb`, renders `preview.png` |
 | `pond.blend` | the Blender scene |
 | `pond.glb` | exported scene (geometry + vertex colours) |
-| `src/fishing.js` | the fishing game (rod, bobber, line, catch bar, journal) |
+| `src/fishing.js`, `src/game.js`, `src/ui.js` | the game: casting and the catch bar, data and save, shop / journal / HUD |
+| `src/fishart.js`, `src/icons.js` | fish and icons drawn from code (no images, no emoji) |
+| `src/creatures.js`, `src/weather.js`, `src/audio.js` | wildlife, rain, generated sound |
 | `src/main.js`, `src/template.html` | three.js viewer: water, sky, wind, light, creatures, sound |
 | `build.mjs` | bundles the viewer and inlines the gzipped GLB into `index.html` |
 
@@ -41,4 +46,4 @@ npm install && npm run build   # writes index.html
 ```
 
 Controls: drag to orbit · scroll to zoom · click water for a ripple + note · `H` hides the UI.
-Add `?lite` to the URL to skip post-processing on slower machines.
+Add `?q=low|med|high` to force a quality level.

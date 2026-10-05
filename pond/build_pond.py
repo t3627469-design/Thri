@@ -9,7 +9,7 @@ Outputs (next to this script):
   pond.glb      exported scene used by index.html (three.js)
   preview.png   Cycles render of the scene (skip with --no-render)
 """
-import bpy, bmesh, math, random, sys, os
+import bpy, bmesh, math, random, sys, os, json
 from mathutils import Vector, noise
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -208,6 +208,14 @@ print("shore radius range: %.2f .. %.2f" % (
     min(shore_radius(i / 90 * math.tau) for i in range(90)),
     max(shore_radius(i / 90 * math.tau) for i in range(90))))
 
+# ---- layout anchors shared by several props
+dock_theta = -math.pi / 2 - 0.35
+_u = Vector((-math.cos(dock_theta), -math.sin(dock_theta), 0))
+_sdir = Vector((-_u.y, _u.x, 0))
+_S0 = Vector((shore_radius(dock_theta) * math.cos(dock_theta), shore_radius(dock_theta) * math.sin(dock_theta), 0))
+BOAT = _S0 + _u * 3.0 + _sdir * 2.1
+SHOP = _S0 + _u * -4.2 + _sdir * -3.4
+
 T = Builder()
 N, EXT = 230, 46.0
 grid = []
@@ -395,6 +403,8 @@ while len(pads) < 46:
     x, y = rr * math.cos(th), rr * math.sin(th)
     if any(math.hypot(x - p[0], y - p[1]) < (p[2] + 0.5) * 1.05 for p in pads):
         continue
+    if math.hypot(x - BOAT.x, y - BOAT.y) < 2.2:
+        continue
     if abs(math.atan2(math.sin(th - dock_theta), math.cos(th - dock_theta))) < 0.22 and rr > shore_radius(th) - 5:
         continue
     pads.append((x, y, uni(0.3, 0.62)))
@@ -414,7 +424,7 @@ lilypads = L.to_obj("LilyPads", MAT["plant"])
 
 # --------------------------------------------------------------------- lotus
 LO = Builder()
-for k in range(14):
+for k in range(20):
     for _ in range(50):
         th = rnd() * math.tau
         rr = shore_radius(th) * uni(0.4, 0.9)
@@ -698,12 +708,253 @@ bfly_body = BB.to_obj("BflyBody", MAT["animal"])
 for o in ("BflyWingL", "BflyWingR", "BflyBody"):
     bpy.data.objects[o].location = (0, 0, -50)   # parked; three.js clones & animates them
 
+
+# ================================================================ extra props
+def loc(base, yaw_, p):
+    v = rotz(Vector((p[0], p[1], 0)), yaw_)
+    return Vector((base.x + v.x, base.y + v.y, base.z + p[2]))
+
+def quad(B, pts, col):
+    B.face([B.vert(Vector(p)) for p in pts], col, smooth_=False)
+
+MAT["shop"] = vc_mat("ShopMat", 0.8, double=True)
+
+# ---- tackle shop (stall with striped awning) ------------------------------
+S_yaw = math.atan2(_u.y, _u.x)            # local +x points toward the pond
+gz = terrain_h(SHOP.x, SHOP.y)
+SBASE = Vector((SHOP.x, SHOP.y, gz))
+SB, SG = Builder(), Builder()
+wood1, wood2, wood3 = srgb(0xa0703f), srgb(0x6e4a2a), srgb(0xc9a36a)
+def L(x, y, z):
+    return loc(SBASE, S_yaw, (x, y, z))
+def sbox(x, y, z, sx, sy, sz, col):
+    add_box(SB, L(x, y, z), (sx, sy, sz), col, rot=S_yaw)
+sbox(0, 0, 0.06, 3.4, 3.4, 0.12, wood2)                       # floor
+sbox(-1.55, 0, 1.2, 0.12, 3.2, 2.2, wood1)                    # back wall
+sbox(0, -1.6, 1.2, 3.2, 0.12, 2.2, wood1)
+sbox(0, 1.6, 1.2, 3.2, 0.12, 2.2, wood1)
+sbox(1.3, 0, 0.62, 0.7, 3.1, 1.0, wood2)                      # counter
+sbox(1.3, 0, 1.15, 1.0, 3.3, 0.1, wood3)
+sbox(-1.35, 0, 1.2, 0.3, 2.8, 0.08, wood2)                    # shelves
+sbox(-1.35, 0, 1.85, 0.3, 2.8, 0.08, wood2)
+jar_cols = [0xe85d4a, 0xf2b632, 0x6fc2c9, 0x7fd36b, 0xd98ba6, 0xb987ff, 0xffffff]
+for k in range(7):
+    c = srgb(jar_cols[k])
+    add_tube(SB, L(-1.35, -1.2 + k * 0.4, 1.24), L(-1.35, -1.2 + k * 0.4, 1.5), 0.09, 0.09, 8, c, c, cap=True)
+    add_tube(SB, L(-1.35, -1.2 + k * 0.4, 1.89), L(-1.35, -1.2 + k * 0.4, 2.1), 0.08, 0.08, 8, srgb(jar_cols[(k + 3) % 7]), srgb(jar_cols[(k + 3) % 7]), cap=True)
+for sy in (-1.75, 1.75):                                      # front posts
+    add_tube(SB, L(2.0, sy, 0.12), L(2.0, sy, 2.4), 0.07, 0.07, 8, wood2, wood2)
+quad(SB, [L(-1.7, -1.9, 2.65), L(-1.7, 1.9, 2.65), L(2.1, 1.9, 2.25), L(2.1, -1.9, 2.25)], srgb(0x7a3b2a))
+quad(SB, [L(-1.7, -1.9, 2.55), L(2.1, -1.9, 2.15), L(2.1, 1.9, 2.15), L(-1.7, 1.9, 2.55)], wood2)
+red, cream = srgb(0xd6483a), srgb(0xf6ead2)
+nstr = 12
+for i in range(nstr):
+    y0 = -1.9 + 3.8 * i / nstr
+    y1 = y0 + 3.8 / nstr
+    c = red if i % 2 == 0 else cream
+    quad(SB, [L(2.1, y0, 2.25), L(2.1, y1, 2.25), L(2.9, y1, 1.9), L(2.9, y0, 1.9)], c)
+    quad(SB, [L(2.9, y0, 1.9), L(2.9, y1, 1.9), L(2.9, (y0 + y1) / 2, 1.68)], c)
+add_box(SB, L(2.05, -1.55, 1.5), (0.06, 0.9, 0.5), wood3, rot=S_yaw)   # sign board
+add_ico(SB, L(2.1, -1.55, 1.5), (0.03, 0.28, 0.12), 3, lambda p, n: srgb(0xe8772a))
+add_ico(SB, L(2.1, -1.31, 1.5), (0.03, 0.09, 0.06), 2, lambda p, n: srgb(0xe8772a))
+for k in range(4):                                             # hanging fish
+    fx, fy = 2.65, -1.3 + k * 0.85
+    add_tube(SB, L(fx, fy, 1.88), L(fx, fy, 1.6), 0.008, 0.008, 4, srgb(0xc9b27a), srgb(0xc9b27a))
+    add_ico(SB, L(fx, fy, 1.45), (0.04, 0.09, 0.17), 3, lambda p, n, k=k: mix(srgb(0xb8c4c9), srgb(0xf2b632), (k % 2) * 0.7 + smooth(0.2, 0.9, n.z) * 0.2))
+for (bx, by) in ((-0.5, 2.25), (0.4, 2.35)):                   # barrels
+    add_tube(SB, L(bx, by, 0.12), L(bx, by, 0.95), 0.34, 0.34, 10, wood1, wood1, cap=True)
+    add_tube(SB, L(bx, by, 0.35), L(bx, by, 0.4), 0.355, 0.355, 10, wood2, wood2)
+    add_tube(SB, L(bx, by, 0.7), L(bx, by, 0.75), 0.355, 0.355, 10, wood2, wood2)
+sbox(0.6, -2.3, 0.37, 0.7, 0.7, 0.5, wood3)                    # crates
+sbox(0.6, -2.3, 0.87, 0.55, 0.55, 0.5, wood1)
+sbox(-0.5, -2.3, 0.3, 0.6, 0.6, 0.36, wood1)
+shop = SB.to_obj("Shop", MAT["shop"])
+add_box(SG, L(1.8, 0.0, 1.95), (0.24, 0.24, 0.3), srgb(0xffc266))
+add_box(SG, L(1.8, 0.0, 2.15), (0.3, 0.3, 0.04), srgb(0x3a2a1c))
+shopglow = SG.to_obj("ShopGlow", MAT["glow"])
+shop_anchor = bpy.data.objects.new("ShopAnchor", None)
+bpy.context.scene.collection.objects.link(shop_anchor)
+shop_anchor.location = (SHOP.x, SHOP.y, gz + 1.6)
+
+# ---- rowboat moored beside the dock -----------------------------------------
+BT = Builder()
+boat_yaw = math.atan2(_u.y, _u.x) - math.pi / 2   # local +y (bow) -> toward pond
+HL, HW = 1.5, 0.64
+NST, NPT = 13, 11
+def hull(t, s, inset):
+    w = HW * (1 - abs(t) ** 2.3) ** 0.65
+    sheer = 0.17 + 0.12 * abs(t) ** 3
+    keel = -0.23 * (1 - abs(t) ** 2.0)
+    zz = keel * (1 - s * s) + sheer * s * s
+    return Vector((s * w * (1 - inset), t * HL, zz + (-0.03 if inset else 0.0))), sheer
+paint, paint2, plank = srgb(0x2f6f78), srgb(0xf2ead8), srgb(0xc29a66)
+def bv(v):
+    return BT.vert(rotz(v, boat_yaw))
+outer, inner = [], []
+for i in range(NST):
+    t = -1 + 2 * i / (NST - 1)
+    ro, ri = [], []
+    for j in range(NPT):
+        s = -1 + 2 * j / (NPT - 1)
+        ro.append(bv(hull(t, s, 0.0)[0]))
+        ri.append(bv(hull(t, s, 0.09)[0]))
+    outer.append(ro); inner.append(ri)
+for i in range(NST - 1):
+    for j in range(NPT - 1):
+        c = paint2 if (j == 0 or j == NPT - 2) else paint
+        BT.face([outer[i][j], outer[i][j + 1], outer[i + 1][j + 1], outer[i + 1][j]], c, smooth_=True)
+        pc = jitter(plank, 0.1) if (i + j) % 2 == 0 else jitter(mix(plank, srgb(0x8a6a3e), 0.5), 0.1)
+        BT.face([inner[i][j + 1], inner[i][j], inner[i + 1][j], inner[i + 1][j + 1]], pc, smooth_=True)
+for i in range(NST - 1):                                   # gunwale rim
+    for j in (0, NPT - 1):
+        BT.face([outer[i][j], outer[i + 1][j], inner[i + 1][j], inner[i][j]], srgb(0xa87a48), smooth_=False)
+for ty, tw in ((-0.35, 0.5), (0.55, 0.42)):                # thwarts
+    pos = rotz(Vector((0, ty, 0.07)), boat_yaw)
+    add_box(BT, pos, (2 * tw, 0.24, 0.05), srgb(0xb88a54), rot=boat_yaw)
+for sx in (-0.18, 0.18):                                    # oars resting inside
+    a, b_ = rotz(Vector((sx, -0.9, 0.12)), boat_yaw), rotz(Vector((sx + 0.05, 0.9, 0.12)), boat_yaw)
+    add_tube(BT, a, b_, 0.02, 0.02, 6, srgb(0x8a6038), srgb(0x8a6038))
+    add_box(BT, rotz(Vector((sx + 0.05, 0.95, 0.12)), boat_yaw), (0.1, 0.28, 0.02), srgb(0xf2ead8), rot=boat_yaw)
+boat = BT.to_obj("Boat", MAT["wood"])
+boat.data.materials[0] = MAT["shop"]
+boat.location = (BOAT.x, BOAT.y, WATER_Z + 0.13)
+
+# ---- bench by the cherry tree -------------------------------------------------
+BN = Builder()
+bnx, bny = 10.4, 7.9
+bbase = Vector((bnx, bny, terrain_h(bnx, bny)))
+byaw = math.atan2(-bny, -bnx)
+def BL(x, y, z): return loc(bbase, byaw, (x, y, z))
+for k in range(4):
+    add_box(BN, BL(0.0 + (k - 1.5) * 0.14, 0, 0.46), (0.12, 1.7, 0.05), jitter(wood1, 0.1), rot=byaw)
+for k in range(3):
+    add_box(BN, BL(-0.26, 0, 0.62 + k * 0.14), (0.04, 1.7, 0.1), jitter(wood1, 0.1), rot=byaw)
+for sy in (-0.75, 0.75):
+    for sx in (-0.2, 0.2):
+        add_box(BN, BL(sx, sy, 0.22), (0.07, 0.07, 0.44), wood2, rot=byaw)
+    add_box(BN, BL(-0.24, sy, 0.62), (0.06, 0.06, 0.45), wood2, rot=byaw)
+    add_box(BN, BL(0.0, sy, 0.64), (0.4, 0.06, 0.05), wood2, rot=byaw)
+bench = BN.to_obj("Bench", MAT["wood"])
+
+# ---- mushrooms -------------------------------------------------------------------
+MU = Builder()
+clusters = [(-12.5, 5.5), (-8.5, 10.8), (7.2, 11.6), (11.8, 4.2), (-9.5, -9.0), (14.0, -6.0), (-14.5, -2.0), (3.5, 15.0)]
+for _ in range(10):
+    th_ = rnd() * math.tau; r_ = uni(11, 17)
+    clusters.append((r_ * math.cos(th_), r_ * math.sin(th_)))
+for (cx, cy) in clusters:
+    if pond_d(cx, cy) < 2.5:
+        continue
+    for _ in range(random.randint(3, 6)):
+        mx, my = cx + uni(-0.8, 0.8), cy + uni(-0.8, 0.8)
+        mz = terrain_h(mx, my)
+        sc = uni(0.6, 1.5)
+        kind = rnd()
+        cap_a = srgb(0xd6382a) if kind < 0.6 else (srgb(0xc58a4a) if kind < 0.85 else srgb(0xe8c24a))
+        add_tube(MU, (mx, my, mz - 0.02), (mx, my, mz + 0.12 * sc), 0.025 * sc, 0.02 * sc, 7, srgb(0xefe6cf), srgb(0xf6efdc))
+        add_ico(MU, (mx, my, mz + 0.13 * sc), (0.085 * sc, 0.085 * sc, 0.055 * sc), 3,
+                lambda p, n, ca=cap_a, k=kind: (srgb(0xffffff) if (k < 0.6 and noise.noise(p * 38) > 0.3 and n.z > 0.2) else ca))
+mushrooms = MU.to_obj("Mushrooms", MAT["leaf"])
+
+# ---- fallen log -------------------------------------------------------------------
+LG = Builder()
+la, lb = Vector((-11.2, -6.4, 0)), Vector((-8.1, -7.6, 0))
+la.z, lb.z = terrain_h(la.x, la.y) + 0.3, terrain_h(lb.x, lb.y) + 0.3
+add_tube(LG, la, lb, 0.34, 0.3, 12, srgb(0x4a3322), srgb(0x5b402a), cap=True)
+add_ico(LG, (la + lb) / 2 + Vector((0, 0, 0.24)), (1.4, 0.26, 0.13), 3, lambda p, n: mix(srgb(0x3f7a22), srgb(0x6aa83a), noise.noise(p * 4) * 0.5 + 0.5), amp=0.3, seed=3.0, rot=math.atan2(lb.y - la.y, lb.x - la.x))
+add_ico(LG, la + Vector((0.05, 0, 0.0)), (0.34, 0.34, 0.34), 3, lambda p, n: srgb(0xc9a36a), amp=0.05)
+logm = LG.to_obj("Log", MAT["wood"])
+
+# ---- flowering bushes --------------------------------------------------------------
+BU = Builder()
+bush_pts = []
+tries_b = 0
+while len(bush_pts) < 30 and tries_b < 400:
+    tries_b += 1
+    th_ = rnd() * math.tau
+    r_ = shore_radius(th_) + uni(2.0, 7.5)
+    bx_, by_ = r_ * math.cos(th_), r_ * math.sin(th_)
+    if abs(math.atan2(math.sin(th_ - dock_theta), math.cos(th_ - dock_theta))) < 0.45:
+        continue
+    if math.hypot(bx_ - SHOP.x, by_ - SHOP.y) < 4 or math.hypot(bx_ - bnx, by_ - bny) < 2.5:
+        continue
+    bush_pts.append((bx_, by_))
+bloom_sets = [[0xff9ec4, 0xffffff], [0xffffff, 0xfff2a8], [0x9ec8ff, 0xc9a7ff], [0xff7b6b, 0xffd23f]]
+for (bx_, by_) in bush_pts:
+    bz_ = terrain_h(bx_, by_)
+    bl = random.choice(bloom_sets)
+    base_g = jitter(mix(srgb(0x2f7a22), srgb(0x56b03a), rnd()), 0.1)
+    for _ in range(random.randint(3, 5)):
+        c = (bx_ + uni(-0.5, 0.5), by_ + uni(-0.5, 0.5), bz_ + uni(0.25, 0.55))
+        rr = uni(0.45, 0.85)
+        add_ico(BU, c, (rr, rr, rr * 0.8), 3,
+                lambda p, n, g=base_g: mix(jitter(g, 0.06), (min(1, g[0] * 1.5), min(1, g[1] * 1.4), g[2] * 1.2), smooth(0.0, 1.0, n.z) * 0.5),
+                amp=0.25, seed=rnd() * 30)
+        for _ in range(random.randint(6, 11)):
+            nv = Vector((uni(-1, 1), uni(-1, 1), uni(0.0, 1.0))).normalized()
+            fc = srgb(random.choice(bl))
+            add_ico(BU, Vector(c) + Vector((nv.x * rr, nv.y * rr, nv.z * rr * 0.8)), (0.05, 0.05, 0.035), 1, lambda p, n, fc=fc: fc, smooth_=True)
+bushes = BU.to_obj("Bushes", MAT["leaf"])
+
+# ---- ferns ---------------------------------------------------------------------------
+FN = Builder()
+fern_n = 0
+while fern_n < 110:
+    r_ = uni(7, 30); th_ = rnd() * math.tau
+    fx, fy = r_ * math.cos(th_), r_ * math.sin(th_)
+    if pond_d(fx, fy) < 1.8 or terrain_h(fx, fy) < 0.05:
+        continue
+    fz = terrain_h(fx, fy) - 0.02
+    ph = rnd()
+    tint = jitter(mix(srgb(0x2a7a2a), srgb(0x4a9a30), rnd()), 0.1)
+    for k in range(8):
+        add_blade(FN, (fx, fy, fz), uni(0.45, 0.85), 0.07, k / 8 * math.tau + uni(-0.2, 0.2), uni(0.7, 1.1), jitter(tint, 0.1), ph, taper=0.9)
+    fern_n += 1
+ferns = FN.to_obj("Ferns", MAT["plant"])
+
+# ---- frog (cloned by three.js) ----------------------------------------------------------
+FR = Builder()
+g1, g2, bel = srgb(0x5fae3a), srgb(0x3c8a2a), srgb(0xe3ecaa)
+add_ico(FR, (0, 0.0, 0.07), (0.09, 0.13, 0.07), 3, lambda p, n: mix(bel, mix(g1, g2, noise.noise(p * 24) * 0.5 + 0.5), smooth(-0.1, 0.35, n.z)))
+add_ico(FR, (0, -0.12, 0.1), (0.075, 0.07, 0.055), 3, lambda p, n: g1)
+for sx in (-1, 1):
+    add_ico(FR, (sx * 0.048, -0.135, 0.158), (0.03, 0.03, 0.03), 2, lambda p, n: srgb(0xd9b23a))
+    add_ico(FR, (sx * 0.048, -0.162, 0.162), (0.013, 0.012, 0.016), 1, lambda p, n: srgb(0x111111))
+    add_ico(FR, (sx * 0.095, 0.07, 0.04), (0.04, 0.1, 0.032), 2, lambda p, n: g2)
+    add_ico(FR, (sx * 0.12, 0.15, 0.015), (0.03, 0.07, 0.014), 2, lambda p, n: g1)
+    add_ico(FR, (sx * 0.065, -0.075, 0.03), (0.022, 0.05, 0.022), 2, lambda p, n: g1)
+frog = FR.to_obj("Frog", MAT["animal"])
+frog.location = (0, 0, -50)
+
+# ---- dragonfly (cloned by three.js) ---------------------------------------------------------
+DF = Builder()
+teal, blue = srgb(0x1fa8c9), srgb(0x174f9a)
+for i in range(9):
+    y0, y1 = 0.03 + i * 0.045, 0.03 + (i + 1) * 0.045
+    c = teal if i % 2 == 0 else blue
+    add_tube(DF, (0, y0, 0), (0, y1, 0), 0.012 - i * 0.0006, 0.012 - (i + 1) * 0.0006, 6, c, c)
+add_ico(DF, (0, 0.0, 0.0), (0.022, 0.04, 0.022), 2, lambda p, n: srgb(0x2fbf6a))
+add_ico(DF, (0, -0.05, 0.0), (0.02, 0.02, 0.02), 2, lambda p, n: srgb(0x2b4fb8))
+for sx in (-1, 1):
+    add_ico(DF, (sx * 0.015, -0.058, 0.006), (0.014, 0.014, 0.014), 2, lambda p, n: srgb(0x1c3fa8))
+dfly = DF.to_obj("DflyBody", MAT["animal"])
+dfly.location = (0, 0, -50)
+DW = Builder()
+dctr = DW.vert(Vector((0, 0, 0)))
+outline = [(0.02, 0.012), (0.06, 0.03), (0.11, 0.032), (0.145, 0.015), (0.14, -0.006), (0.1, -0.02), (0.05, -0.015)]
+ring = [DW.vert(Vector((x, y, 0))) for x, y in outline]
+for i in range(len(ring) - 1):
+    DW.face([dctr, ring[i], ring[i + 1]], [srgb(0xe8f4ff), srgb(0xcfe6ff), srgb(0xcfe6ff)], smooth_=False)
+dw = DW.to_obj("DflyWing", MAT["animal"])
+dw.location = (0, 0, -50)
+
 # ------------------------------------------------------------ scene metadata
 meta = bpy.data.objects.new("PondMeta", None)
 bpy.context.scene.collection.objects.link(meta)
 meta["water_z"] = WATER_Z
 meta["lantern"] = list(LANTERN_POS)
 meta["dock_theta"] = dock_theta
+meta["pads"] = json.dumps([[round(x, 3), round(y, 3), round(r, 3)] for x, y, r in pads])
 
 # ------------------------------------------------------------- lights/camera
 sun = bpy.data.lights.new("Sun", "SUN")
