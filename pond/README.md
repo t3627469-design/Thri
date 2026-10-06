@@ -8,8 +8,8 @@ Open **`index.html`** in any modern browser (single file, works offline).
 
 ## What's in it
 - **Scene (modelled in Blender):** sculpted terrain and pond, ~28,000 grass blades, reeds, ferns, wildflowers, flowering bushes, lily pads, lotus, mossy rocks, trees, a wooden dock, stone lantern, rowboat, bench, mushrooms, a fallen log and a tackle shop stall
-- **Wildlife:** ducks with ducklings, koi under the surface, butterflies, frogs that hop between lily pads, dragonflies and birds
-- **Look:** planar water reflections, caustics, ripples, a sky with clouds, stars, a moon and shooting stars, god rays, mist, falling petals, fireflies, bloom and colour grading
+- **Wildlife:** a mallard pair with four ducklings that follow their mother in a line, koi that swim with a real body wave (and sometimes leap), a grey heron wading the shallows, rabbits in the meadow, four species of butterfly that land on flowers, frogs hopping between lily pads, dragonflies and birds. Animals steer around the dock, boat and shore, and react to you: ducks swim off, rabbits bolt, the heron walks away, frogs jump
+- **Look:** worn dirt paths, soft baked shadows under trees and props, cloud shadows drifting over the land, wind gusts rolling through the grass, planar water reflections, caustics, ripples, a sky with clouds, stars, a moon and shooting stars, god rays, mist, falling petals, fireflies, bloom and colour grading
 - **Automatic day and night** (keys `1`-`4` jump the clock) and **weather** (`R`): rain darkens the light, fills the pond with ripples and brings out stormy fish
 - **Sound:** generated wind, water, birds, crickets, rain, frogs and soft chimes (no audio files)
 

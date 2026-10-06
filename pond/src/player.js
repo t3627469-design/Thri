@@ -126,5 +126,7 @@ export function initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen, 
     requestLock() { if (lockFailed || locked) return; try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => { lockFailed = true; }); } catch (e) { lockFailed = true; } },
     exitLock() { if (locked) document.exitPointerLock(); },
     get moving() { return Math.hypot(vel.x, vel.y) > 0.3; },
+    lookAt(x, y, z) { const dx = x - pos.x, dy = y - pos.y, dz = z - pos.z; yaw = Math.atan2(-dx, -dz); pitch = Math.atan2(dy, Math.hypot(dx, dz)); },
+    teleport(x, z) { pos.x = x; pos.z = z; eyeY = groundAt(x, z) + EYE; pos.y = eyeY; },
   };
 }

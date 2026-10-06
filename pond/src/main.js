@@ -74,7 +74,7 @@ const U = {
   uTime: { value: 0 }, uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color() },
   uLight: { value: 1 }, uStars: { value: 0 }, uCloud: { value: 1 }, uDisc: { value: 0.9996 }, uDiscInt: { value: 6 },
-  uFogColor: { value: new THREE.Color() }, uFogD: { value: 0.01 }, uRain: { value: 0 },
+  uFogColor: { value: new THREE.Color() }, uFogD: { value: 0.01 }, uRain: { value: 0 }, uCloudSh: { value: 0.3 },
   uRip: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, -100, 0)) },
   uHeight: { value: null }, uScale: { value: innerHeight * 0.5 },
   uReflTex: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 1 },
@@ -131,10 +131,10 @@ composer.addPass(fxPass);
 const PRESETS = {
   golden: { label: 'Golden hour', top: '#3b66b0', hor: '#ffb27c', sunCol: '#ffa95e', sunInt: 4.4, el: 17, az: -118,
     hemiSky: '#ffe2c4', hemiGnd: '#7a9a3c', hemiInt: 1.55, fog: '#f0b48c', fogD: 0.011, stars: 0, cloud: 0.95, light: 1, lantern: 0.5, fire: 0.3, blink: 0.15,
-    fireCol: '#ffd88a', bloom: 0.55, exposure: 1.1, mist: 0.3, petal: 1, day: 1, rays: 0.9, sat: 1.12, tint: '#fff4e4', disc: 0.99962, discInt: 7 },
-  midday: { label: 'Bright day', top: '#2a82d8', hor: '#cfe8ff', sunCol: '#fff1d6', sunInt: 4.0, el: 56, az: -70,
-    hemiSky: '#d6eaff', hemiGnd: '#6f9a3a', hemiInt: 1.8, fog: '#c8e2f5', fogD: 0.007, stars: 0, cloud: 1.1, light: 1.1, lantern: 0.1, fire: 0.12, blink: 0,
-    fireCol: '#ffffff', bloom: 0.3, exposure: 0.95, mist: 0.05, petal: 1, day: 1, rays: 0.3, sat: 1.1, tint: '#ffffff', disc: 0.99962, discInt: 6 },
+    fireCol: '#ffd88a', bloom: 0.55, exposure: 1.1, mist: 0.3, petal: 1, day: 1, rays: 0.9, sat: 1.06, tint: '#fff4e4', disc: 0.99962, discInt: 7 },
+  midday: { label: 'Bright day', top: '#2a82d8', hor: '#cfe8ff', sunCol: '#fff1d6', sunInt: 3.5, el: 56, az: -70,
+    hemiSky: '#d6eaff', hemiGnd: '#7d8f5a', hemiInt: 1.85, fog: '#c8e2f5', fogD: 0.007, stars: 0, cloud: 1.1, light: 1.1, lantern: 0.1, fire: 0.12, blink: 0,
+    fireCol: '#ffffff', bloom: 0.3, exposure: 0.92, mist: 0.05, petal: 1, day: 1, rays: 0.3, sat: 0.98, tint: '#ffffff', disc: 0.99962, discInt: 6 },
   twilight: { label: 'Twilight', top: '#2b2766', hor: '#ff7d88', sunCol: '#ff7a5c', sunInt: 1.8, el: 5, az: -100,
     hemiSky: '#a58ae0', hemiGnd: '#4a4a6a', hemiInt: 1.0, fog: '#c87a96', fogD: 0.013, stars: 0.35, cloud: 0.8, light: 0.5, lantern: 1.6, fire: 0.75, blink: 0.7,
     fireCol: '#d8ff8a', bloom: 0.8, exposure: 1.25, mist: 0.5, petal: 0.8, day: 0.4, rays: 0.55, sat: 1.12, tint: '#fff0f6', disc: 0.9996, discInt: 6 },
@@ -215,6 +215,7 @@ function applyTime(dt) {
   U.uSunDir.value.set(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az)).normalize();
   wxTint(cur.top, U.uTop.value, wx, 0.55); wxTint(cur.hor, U.uHor.value, wx, 0.5); U.uSunCol.value.copy(cur.sunCol);
   U.uLight.value = cur.light * (1 - 0.32 * wx); U.uStars.value = cur.stars * (1 - wx); U.uCloud.value = cur.cloud + wx * 0.9;
+  U.uCloudSh.value = clamp((U.uCloud.value - 0.5) * 0.6, 0, 0.42) * clamp(cur.light, 0, 1) * (1 - wx * 0.7);
   U.uDisc.value = cur.disc; U.uDiscInt.value = cur.discInt * (1 - wx * 0.9);
   wxTint(cur.fog, U.uFogColor.value, wx, 0.5); U.uFogD.value = cur.fogD * (1 + 0.7 * wx);
   scene.fog.color.copy(U.uFogColor.value); scene.fog.density = U.uFogD.value;
@@ -369,52 +370,57 @@ function makeWater() {
 /* --------------------------- material helpers ---------------------------- */
 const lam = (opts = {}) => new THREE.MeshLambertMaterial({ vertexColors: true, ...opts });
 
-function patchSway(mat, { sway = 1, gradient = true, glow = 0 } = {}) {
+/* One material patcher: wind sway + gust highlights, ground / leaf / bark detail, drifting cloud shadows. */
+const SWAY_GLSL = /* glsl */`
+  vec3 transformed = vec3(position);
+  float sw = uv.y * uv.y; float ph = uv.x * 6.2831;
+  float wave = sin(uTime*1.25 - dot(position.xz, vec2(0.30, 0.17)));
+  float gust = smoothstep(-0.2, 1.0, wave) * (0.55 + 0.45*sin(uTime*0.21 + position.x*0.04 - position.z*0.03));
+  float w1 = sin(uTime*1.35 + position.x*0.33 + position.z*0.21 + ph);
+  float w2 = cos(uTime*1.1 + position.z*0.37 + ph*1.7);
+  transformed.x += (w1*0.04 + gust*0.13) * sw * uSway;
+  transformed.z += (w2*0.035 + gust*0.075) * sw * uSway;
+  transformed.y -= (abs(w1)*0.01 + gust*0.03) * sw * uSway;
+  vT = uv.y; vGust = gust;`;
+const LEAF_GLSL = /* glsl */`
+  float lh = clamp(position.y*0.1, 0.0, 1.0);
+  transformed.x += sin(uTime*0.9 + position.x*0.5 + position.y*0.4)*0.05*lh;
+  transformed.z += cos(uTime*0.8 + position.z*0.5 + position.y*0.3)*0.05*lh;`;
+const TERRAIN_GLSL = /* glsl */`
+  float tn = vnoise(vCW.xz*1.4)*0.6 + vnoise(vCW.xz*6.5)*0.4;
+  diffuseColor.rgb *= 0.76 + 0.46*tn;
+  diffuseColor.rgb *= mix(vec3(1.07,1.0,0.85), vec3(0.9,1.05,1.02), vnoise(vCW.xz*0.11));
+  diffuseColor.rgb *= 0.92 + 0.16*vnoise(vCW.xz*23.0);`;
+function patchMat(mat, o = {}) {
+  const key = JSON.stringify(o);
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = U.uTime; sh.uniforms.uSway = { value: sway };
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\nuniform float uTime; uniform float uSway; varying float vT;`)
-      .replace('#include <begin_vertex>', `
-        vec3 transformed = vec3(position);
-        float sw = uv.y * uv.y; float ph = uv.x * 6.2831;
-        float gust = sin(uTime*0.45 + position.x*0.07 + position.z*0.05)*0.5 + 0.5;
-        float w1 = sin(uTime*1.35 + position.x*0.33 + position.z*0.21 + ph);
-        float w2 = cos(uTime*1.1 + position.z*0.37 + ph*1.7);
-        transformed.x += (w1*0.045 + gust*0.1) * sw * uSway;
-        transformed.z += (w2*0.04 + gust*0.04) * sw * uSway;
-        transformed.y -= (abs(w1)*0.01 + gust*0.02) * sw * uSway;
-        vT = uv.y;`);
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying float vT;`)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        ${gradient ? 'diffuseColor.rgb *= mix(vec3(0.38,0.5,0.34), vec3(1.25,1.2,0.85), vT);' : ''}`)
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        totalEmissiveRadiance += diffuseColor.rgb * ${glow.toFixed(2)} * vT * vT;`);
+    sh.uniforms.uTime = U.uTime; sh.uniforms.uCloudSh = U.uCloudSh;
+    if (o.sway) sh.uniforms.uSway = { value: o.sway };
+    const sv = o.sway ? ' uniform float uSway; varying float vT; varying float vGust;' : '';
+    let vs = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uTime;${sv}\nvarying vec3 vCW;`);
+    if (o.sway) vs = vs.replace('#include <begin_vertex>', SWAY_GLSL);
+    if (o.leaves) vs = vs.replace('#include <begin_vertex>', '#include <begin_vertex>\n' + LEAF_GLSL);
+    vs = vs.replace('#include <project_vertex>', '#include <project_vertex>\n  vCW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    let fs = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uTime, uCloudSh; varying vec3 vCW;${o.sway ? ' varying float vT; varying float vGust;' : ''}\n${NOISE}`);
+    let col = '';
+    if (o.sway && o.gradient !== false) col += 'diffuseColor.rgb *= mix(vec3(0.38,0.5,0.34), vec3(1.25,1.2,0.85), vT);\n';
+    if (o.sway) col += 'diffuseColor.rgb *= 1.0 + vGust * vT * 0.34;\n';
+    if (o.terrain) col += TERRAIN_GLSL;
+    if (o.leaves) col += 'diffuseColor.rgb *= 0.78 + 0.36*vnoise(vCW.xz*4.5 + vCW.y*3.7);\n';
+    if (o.bark) col += 'diffuseColor.rgb *= 0.72 + 0.42*vnoise(vec2((vCW.x + vCW.z)*14.0, vCW.y*1.6));\n';
+    fs = fs.replace('#include <color_fragment>', '#include <color_fragment>\n' + col);
+    if (o.sway) fs = fs.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n  normal = normalize(vNormal);');
+    if (o.glow) fs = fs.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * ${o.glow.toFixed(2)} * vT * vT;`);
+    fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+      reflectedLight.directDiffuse *= 1.0 - uCloudSh * smoothstep(0.45, 0.75, fbm3(vCW.xz*0.022 + vec2(uTime*0.010, uTime*0.005)));`);
+    sh.vertexShader = vs; sh.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `sway${sway}-${gradient}-${glow}`;
+  mat.customProgramCacheKey = () => 'p' + key;
   return mat;
 }
-function patchTerrain(mat) {
-  mat.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP2;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP2 = position;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vWP2;\n${NOISE}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\n float tn = vnoise(vWP2.xz*1.4)*0.6 + vnoise(vWP2.xz*6.5)*0.4;\n diffuseColor.rgb *= 0.74 + 0.5*tn;`);
-  };
-  mat.customProgramCacheKey = () => 'terrain';
-  return mat;
-}
-function patchLeaves(mat) {
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = U.uTime;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        float lh = clamp(position.y*0.1, 0.0, 1.0);
-        transformed.x += sin(uTime*0.9 + position.x*0.5 + position.y*0.4)*0.05*lh;
-        transformed.z += cos(uTime*0.8 + position.z*0.5 + position.y*0.3)*0.05*lh;`);
-  };
-  mat.customProgramCacheKey = () => 'leaves';
-  return mat;
-}
+const patchSway = (m, o = {}) => patchMat(m, { sway: o.sway || 1, gradient: o.gradient, glow: o.glow || 0 });
+const patchTerrain = (m) => patchMat(m, { terrain: true });
+const patchLeaves = (m) => patchMat(m, { leaves: true });
 function flattenNormalsUp(geo, k) {
   const n = geo.attributes.normal;
   for (let i = 0; i < n.count; i++) {
@@ -668,28 +674,28 @@ function setup(gltf) {
   const by = (n) => root.getObjectByName(n);
   const set = (n, mat, cast = false, recv = true) => { const o = by(n); if (!o) return null; o.material = mat; o.castShadow = cast; o.receiveShadow = recv; return o; };
 
-  const terrain = set('Terrain', patchTerrain(lam({ color: new THREE.Color(1.5, 1.5, 1.35) })));
+  const terrain = set('Terrain', patchTerrain(lam({ color: new THREE.Color(1.32, 1.3, 1.2) })));
   U.uHeight.value = buildHeightTexture(terrain);
   const old = by('Water'); if (old) old.visible = false;
   const waterMesh = makeWater(); scene.add(waterMesh); hideInRefl.push(waterMesh);
 
   // plants: flatten normals up, then split into chunks that are culled by distance
   const plant = (name, k, mat, cell, dist) => { const o = by(name); flattenNormalsUp(o.geometry, k); o.material = mat; o.receiveShadow = true; return chunkify(o, cell, dist); };
-  const grassSet = plant('Grass', 0.8, patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.7, 1.75, 1.2) }), { sway: 1, glow: 0.3 }), 12, () => Q.grass);
+  const grassSet = plant('Grass', 0.8, patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.38, 1.4, 1.08) }), { sway: 1, glow: 0.26 }), 12, () => Q.grass);
   const flowerSet = plant('Flowers', 0.7, patchSway(lam({ side: THREE.DoubleSide }), { sway: 1, gradient: false, glow: 0.12 }), 14, () => Q.grass * 0.85);
-  const reedSet = plant('Reeds', 0.6, patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.6, 1.6, 1.2) }), { sway: 1.25, glow: 0.25 }), 10, () => Q.grass * 1.1);
+  const reedSet = plant('Reeds', 0.6, patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.35, 1.35, 1.1) }), { sway: 1.25, glow: 0.22 }), 10, () => Q.grass * 1.1);
   const fernO = by('Ferns'); flattenNormalsUp(fernO.geometry, 0.5);
-  fernO.material = patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.5, 1.6, 1.2) }), { sway: 0.8, glow: 0.2 }); fernO.receiveShadow = true;
-  const bushSet = (() => { const o = by('Bushes'); o.material = patchLeaves(lam({ color: new THREE.Color(1.6, 1.6, 1.4) })); o.receiveShadow = true; return chunkify(o, 16, () => Q.grass * 1.6); })();
-  const folO = set('Foliage', patchLeaves(lam({ color: new THREE.Color(1.7, 1.7, 1.45) })), true, true);
+  fernO.material = patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.3, 1.35, 1.1) }), { sway: 0.8, glow: 0.18 }); fernO.receiveShadow = true;
+  const bushSet = (() => { const o = by('Bushes'); o.material = patchLeaves(lam({ color: new THREE.Color(1.4, 1.38, 1.25) })); o.receiveShadow = true; return chunkify(o, 16, () => Q.grass * 1.6); })();
+  const folO = set('Foliage', patchLeaves(lam({ color: new THREE.Color(1.55, 1.52, 1.38) })), true, true);
   chunkify(folO, 22, 0);
   grassSets.push(grassSet, flowerSet);
   hideInRefl.push(grassSet.group, flowerSet.group, bushSet.group);
 
   for (const n of ['LilyPads', 'Lotus']) set(n, lam({ side: THREE.DoubleSide }), n === 'Lotus');
-  set('Rocks', lam({ color: new THREE.Color(2.0, 2.0, 1.9) }), true);
-  set('Trunks', lam({ color: new THREE.Color(1.5, 1.5, 1.5) }), true);
-  set('Dock', lam(), true); set('Lantern', lam(), true);
+  set('Rocks', patchMat(lam({ color: new THREE.Color(2.0, 2.0, 1.9) }), { leaves: false }), true);
+  set('Trunks', patchMat(lam({ color: new THREE.Color(1.5, 1.5, 1.5) }), { bark: true }), true);
+  set('Dock', patchMat(lam(), { dock: 1 }), true); set('Lantern', lam(), true);
   set('Bench', lam({ color: new THREE.Color(1.5, 1.5, 1.4) }), true); set('Log', lam({ color: new THREE.Color(1.4, 1.4, 1.3) }), true);
   set('Mushrooms', lam({ color: new THREE.Color(1.3, 1.3, 1.3) }), false);
   const boat = set('Boat', lam({ side: THREE.DoubleSide, color: new THREE.Color(1.4, 1.4, 1.4) }), true);
@@ -705,13 +711,13 @@ function setup(gltf) {
   mistGroup = makeMist(); scene.add(mistGroup); hideInRefl.push(mistGroup);
   hideInRefl.push(fireflies, petals);
 
-  creatures = initCreatures({ root, scene, camera, addRipple, hAt, WATER_Y, audio });
   weather = initWeather({ scene, camera, U, audio });
   hideInRefl.push(weather.mesh, fernO);
   weather.setMode(G.state.weather);
   let colliders = [];
   try { colliders = JSON.parse((by('PondMeta') && by('PondMeta').userData.colliders) || '[]').map(([x, y, r]) => [x, -y, r]); } catch (e) { /* none */ }
   player = initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen: () => !$('modal').hidden, getSens: () => +G.state.sens || 1 });
+  creatures = initCreatures({ root, scene, camera, addRipple, hAt, WATER_Y, audio, getPlayer: () => player, colliders });
   fishing = initFishing({ scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
 
   initUI({
@@ -840,7 +846,7 @@ canvas.addEventListener('pointerup', (e) => {
 $('shoplabel').addEventListener('click', () => openPanel('shop'));
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); setResolution(); });
 
-window.__pond = { scene, camera, get player() { return player; }, get clock() { return clock; }, set clock(v) { clock = v; }, U, renderer, composer, G, gov, get qMode() { return qMode; }, openPanel, setQualityMode, get qLevel() { return qLevel; }, get resScale() { return resScale; }, get Q() { return Q; }, setPreset, get weather() { return weather; } };
+window.__pond = { get creatures() { return creatures; }, scene, camera, get player() { return player; }, get clock() { return clock; }, set clock(v) { clock = v; }, U, renderer, composer, G, gov, get qMode() { return qMode; }, openPanel, setQualityMode, get qLevel() { return qLevel; }, get resScale() { return resScale; }, get Q() { return Q; }, setPreset, get weather() { return weather; } };
 
 /* ---------------------------------- boot --------------------------------- */
 (async () => {

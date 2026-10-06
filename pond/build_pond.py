@@ -214,8 +214,37 @@ _u = Vector((-math.cos(dock_theta), -math.sin(dock_theta), 0))
 _sdir = Vector((-_u.y, _u.x, 0))
 _S0 = Vector((shore_radius(dock_theta) * math.cos(dock_theta), shore_radius(dock_theta) * math.sin(dock_theta), 0))
 BOAT = _S0 + _u * 3.0 + _sdir * 2.1
-COLL = []   # (x, y, radius) obstacles for the first-person walker
 SHOP = _S0 + _u * -4.2 + _sdir * -3.4
+COLL = []   # (x, y, radius) obstacles for the first-person walker
+AOC = []    # (x, y, radius, strength) soft ambient-occlusion blobs baked into ground colours
+BENCH = (10.4, 7.9)
+
+# ---- worn footpaths -----------------------------------------------------------------
+def _ring(th0, th1, off, n):
+    return [((shore_radius(t) + off) * math.cos(t), (shore_radius(t) + off) * math.sin(t)) for t in [th0 + (th1 - th0) * i / n for i in range(n + 1)]]
+_bench_th = math.atan2(BENCH[1], BENCH[0])
+PATHS = [
+    [(SHOP.x + _u.x * 2.4, SHOP.y + _u.y * 2.4), (_S0.x - _u.x * 1.9, _S0.y - _u.y * 1.9)],
+    _ring(dock_theta, _bench_th - 0.05, 2.3, 60) + [(BENCH[0] - 0.9, BENCH[1] - 0.7)],
+    _ring(dock_theta, dock_theta - 1.5, 2.3, 30),
+]
+_pgrid = {}
+for poly in PATHS:
+    for (a0, a1) in zip(poly[:-1], poly[1:]):
+        seg = math.hypot(a1[0] - a0[0], a1[1] - a0[1])
+        for i in range(int(seg / 0.25) + 1):
+            k = i * 0.25 / max(seg, 1e-6)
+            px, py = a0[0] + (a1[0] - a0[0]) * k, a0[1] + (a1[1] - a0[1]) * k
+            _pgrid.setdefault((math.floor(px), math.floor(py)), []).append((px, py))
+def path_dist(x, y):
+    best = 9.0
+    cx, cy = math.floor(x), math.floor(y)
+    for gx in (cx - 1, cx, cx + 1):
+        for gy in (cy - 1, cy, cy + 1):
+            for (px, py) in _pgrid.get((gx, gy), ()):
+                d = (px - x) ** 2 + (py - y) ** 2
+                if d < best: best = d
+    return math.sqrt(best)
 
 T = Builder()
 N, EXT = 230, 46.0
@@ -246,6 +275,11 @@ def terrain_color(x, y, h):
     g = mix(g, C_FAR, smooth(22, 42, r) * 0.65)
     g = mix(g, C_DIRT, smooth(0.55, 0.9, noise.noise(Vector((x * 0.2, y * 0.2, 9.0)))) * 0.6 * smooth(2, 5, d))
     beach = (1 - smooth(0.2, 1.6, d)) * (1 - smooth(0.12, 0.35, h))
+    pd = path_dist(x, y)
+    if pd < 1.1:
+        dirt = mix(srgb(0x8f6e46), srgb(0x6a5032), noise.noise(Vector((x * 1.7, y * 1.7, 5.0))) * 0.5 + 0.5)
+        dirt = mix(dirt, srgb(0xa58a62), smooth(0.3, 0.8, noise.noise(Vector((x * 6, y * 6, 2.0)))) * 0.5)
+        g = mix(g, dirt, (1 - smooth(0.45, 1.05, pd + noise.noise(Vector((x * 2.3, y * 2.3, 8.0))) * 0.18)) * 0.92)
     c = mix(g, C_SAND, beach)
     c = mix(c, C_WET, (1 - smooth(-0.2, 0.2, h)) * 0.8)
     return c
@@ -303,7 +337,7 @@ while blades < 28000 and tries < 400000:
     for _ in range(random.randint(10, 18)):
         x = cx + random.gauss(0, 0.26)
         y = cy + random.gauss(0, 0.26)
-        if pond_d(x, y) < 0.45:
+        if pond_d(x, y) < 0.45 or path_dist(x, y) < 0.62:
             continue
         z = terrain_h(x, y) - 0.03
         h = hbase * uni(0.6, 1.25)
@@ -373,7 +407,7 @@ while fl < 900:
     r = 5 + 26 * math.sqrt(rnd())
     th = rnd() * math.tau
     x, y = r * math.cos(th), r * math.sin(th)
-    if pond_d(x, y) < 1.3 or terrain_h(x, y) < 0.05:
+    if pond_d(x, y) < 1.3 or terrain_h(x, y) < 0.05 or path_dist(x, y) < 0.8:
         continue
     # clustered meadows
     if noise.noise(Vector((x * 0.09, y * 0.09, 12.0))) < -0.05:
@@ -476,6 +510,7 @@ for _ in range(32):
     rock_spots.append((x, y, uni(0.25, 0.8) * (1.8 if rnd() < 0.12 else 1.0)))
 for (x, y, s) in rock_spots:
     COLL.append((x, y, s * 1.05))
+    AOC.append((x, y, s * 1.7, 0.32))
     z = terrain_h(x, y)
     base = jitter(mix(srgb(0x7d7a72), srgb(0x5a5750), rnd()), 0.1)
     add_ico(RK, (x, y, z + s * 0.2), (s * uni(1, 1.5), s * uni(0.9, 1.3), s * uni(0.55, 0.9)), 3,
@@ -514,6 +549,8 @@ def tree(x, y, kind, s):
         trunk_c0, trunk_c1 = srgb(0x3b2a1e), srgb(0x4d3828)
     rw = (0.34 if kind != "pine" else 0.3) * s
     COLL.append((x, y, rw * 1.25 + 0.2))
+    AOC.append((x, y, (1.6 if kind == 'pine' else 2.6) * s, 0.42))
+    AOC.append((x, y, 0.9 * s, 0.25))
     add_tube(TR, p0 - Vector((0, 0, 0.3)), pm, rw * 1.2, rw * 0.8, 8, trunk_c0, trunk_c1)
     add_tube(TR, pm, p1, rw * 0.8, rw * 0.45, 8, trunk_c1, trunk_c1)
     if kind in ("oak", "cherry"):
@@ -617,25 +654,79 @@ add_box(GL, (lp.x, lp.y, lz + 1.2), (0.34, 0.34, 0.3), srgb(0xffc266))
 lanternglow = GL.to_obj("LanternGlow", MAT["glow"])
 LANTERN_POS = (lp.x, lp.y, lz + 1.2)
 COLL.append((lp.x, lp.y, 0.45))
+AOC.append((lp.x, lp.y, 0.8, 0.25))
 
 # ------------------------------------------------------------------- critters
+def add_shape(B, c, sub, posfn, colfn, smooth_=True):
+    """Icosphere whose unit normals are mapped through posfn(n) -> local offset. colfn(n, p) -> colour."""
+    tmp = bmesh.new()
+    bmesh.ops.create_icosphere(tmp, subdivisions=sub, radius=1.0)
+    tmp.verts.index_update()
+    out = {}
+    for v in tmp.verts:
+        n = v.co.copy().normalized()
+        p = posfn(n)
+        out[v.index] = (B.vert(Vector(c) + p), colfn(n, p))
+    for f in tmp.faces:
+        B.face([out[v.index][0] for v in f.verts], [out[v.index][1] for v in f.verts], smooth_=smooth_)
+    tmp.free()
+
+def fan(B, center, pts, cols, double=True):
+    """Triangle fan; pts are rings: pts[ring][i]."""
+    pass
+
 def duck(name, scale, kind, pos):
     D = Builder()
+    P = {
+        "drake": dict(body=0xbdb9b0, back=0x8f897c, breast=0x6e3a22, head=0x1d7a52, ring=0xffffff, tail=0x1c1c1e, bill=0xe8c33a, wing=0x857d70, spec=0x3550d8, belly=0xdedad2, speck=None),
+        "hen": dict(body=0xa58058, back=0x7c5a38, breast=0xb08a5c, head=0x9a764c, ring=0x9a764c, tail=0x7c5a38, bill=0xd8892a, wing=0x6e5234, spec=0x3550d8, belly=0xc2a074, speck=0x4a3420),
+        "chick": dict(body=0xffd54a, back=0x8a6a2e, breast=0xffe48a, head=0xffd54a, ring=0xffd54a, tail=0x8a6a2e, bill=0x4a3a24, wing=0x9a7a38, spec=0x9a7a38, belly=0xfff0b0, speck=None),
+    }[kind]
+    C = {k: (srgb(v) if v is not None else None) for k, v in P.items()}
+    L, W, H = 0.30, 0.165, 0.125
+    def body_pos(n):
+        t = (n.y + 1) / 2                                     # 0 = breast, 1 = tail
+        w = W * (1 - 0.42 * t ** 2.0) * (1 + 0.08 * (1 - t))
+        z = n.z * (H * (1.05 + 0.12 * (1 - t)) if n.z > 0 else H * 0.72)
+        z += 0.085 * max(0.0, (t - 0.55) / 0.45) ** 2 * (0.55 + 0.45 * n.z)
+        return Vector((n.x * w, n.y * L, z))
+    def body_col(n, p):
+        t = (n.y + 1) / 2
+        c = mix(C["belly"], C["body"], smooth(-0.55, 0.15, n.z))
+        c = mix(c, C["back"], smooth(0.45, 0.95, n.z) * 0.65)
+        c = mix(C["breast"], c, smooth(0.2, 0.36, t)) if n.z > -0.4 else c
+        c = mix(c, C["tail"], smooth(0.84, 0.95, t))
+        if C["speck"] and noise.noise(Vector((p.x * 70, p.y * 70, p.z * 70))) > 0.25:
+            c = mix(c, C["speck"], 0.55)
+        return c
+    add_shape(D, (0, 0, 0.065), 3, body_pos, body_col)
+    for sx in (-1, 1):                                        # folded wings
+        def wpos(n, sx=sx):
+            return Vector((sx * 0.112 + n.x * 0.045, 0.05 + n.y * 0.165, 0.135 + n.z * 0.04 + 0.035 * n.y))
+        def wcol(n, p, sx=sx):
+            c = C["wing"]
+            if kind != "chick" and -0.15 < n.y < 0.25 and n.x * sx > 0.25:
+                c = C["spec"] if -0.05 < n.y < 0.18 else srgb(0xf4f4f4)
+            return mix(c, C["back"], smooth(0.4, 1.0, n.z) * 0.3)
+        add_shape(D, (0, 0, 0), 2, wpos, wcol)
+    add_tube(D, (0, -0.19, 0.15), (0, -0.25, 0.3), 0.06, 0.047, 10, C["breast"], C["ring"])   # neck
+    def hpos(n):
+        return Vector((n.x * 0.058, -0.26 + n.y * 0.074 - 0.012 * max(0, -n.y), 0.33 + n.z * 0.062))
+    def hcol(n, p):
+        c = C["head"]
+        if kind == "chick" and n.z > 0.45: c = C["back"]
+        if kind == "hen" and abs(n.z - 0.15) < 0.12 and n.y < 0.2: c = mix(c, srgb(0x3a2a18), 0.7)   # eye stripe
+        return c
+    add_shape(D, (0, 0, 0), 3, hpos, hcol)
+    def bpos(n):
+        k = 1 + 0.35 * max(0.0, -n.y)
+        return Vector((n.x * 0.026 * k, -0.345 + n.y * 0.058, 0.305 + n.z * 0.012))
+    add_shape(D, (0, 0, 0), 2, bpos, lambda n, p: mix(C["bill"], srgb(0x1a1a1a), smooth(-0.8, -0.98, n.y) * 0.8))
     if kind == "drake":
-        body, wing, head, ring, chest = srgb(0x8d8a85), srgb(0x6b5a48), srgb(0x1a6b4a), srgb(0xffffff), srgb(0x6b3b24)
-    elif kind == "hen":
-        body, wing, head, ring, chest = srgb(0x9c7a52), srgb(0x7a5a38), srgb(0xa8845a), srgb(0x9c7a52), srgb(0x9c7a52)
-    else:
-        body = wing = head = ring = chest = srgb(0xffd84a)
-    beak = srgb(0xf29a1c) if kind != "hen" else srgb(0xc98a2a)
-    add_ico(D, (0, 0.04, 0.12), (0.2, 0.34, 0.17), 3,
-            lambda p, n: mix(body, chest, smooth(-0.3, -0.9, n.y) * 0.9) if n.y < 0 else mix(body, wing, smooth(0.2, 0.9, n.z) * 0.7))
-    add_ico(D, (0, 0.34, 0.22), (0.09, 0.14, 0.1), 2, lambda p, n: wing)      # tail lift
-    add_tube(D, (0, -0.22, 0.2), (0, -0.28, 0.34), 0.06, 0.05, 8, ring, ring)   # neck
-    add_ico(D, (0, -0.3, 0.37), (0.075, 0.09, 0.075), 3, lambda p, n: head)
-    add_ico(D, (0, -0.4, 0.34), (0.04, 0.07, 0.016), 2, lambda p, n: beak)
+        add_tube(D, (0, -0.21, 0.255), (0, -0.226, 0.275), 0.052, 0.05, 10, C["ring"], C["ring"])     # white collar
+        add_tube(D, (0, 0.29, 0.2), (0, 0.31, 0.27), 0.012, 0.004, 6, C["tail"], C["tail"])          # curled drake feather
     for sx in (-1, 1):
-        add_ico(D, (sx * 0.065, -0.34, 0.4), (0.014, 0.014, 0.014), 1, lambda p, n: srgb(0x111111))
+        add_ico(D, (sx * 0.05, -0.285, 0.35), (0.012, 0.012, 0.012), 1, lambda p, n: srgb(0x0e0e10))
     o = D.to_obj(name, MAT["animal"])
     o.scale = (scale, scale, scale)
     o.location = pos
@@ -643,74 +734,148 @@ def duck(name, scale, kind, pos):
 
 duck("Duck_Drake", 1.0, "drake", (-1.5, 2.0, WATER_Z))
 duck("Duck_Hen", 0.95, "hen", (-2.8, 2.6, WATER_Z))
-for i in range(3):
+for i in range(4):
     duck("Duck_Chick%d" % i, 0.42, "chick", (-3.6 - i * 0.3, 2.9 + i * 0.2, WATER_Z))
 
 def koi(name, scheme):
     K = Builder()
     pal = {
-        "orange": (srgb(0xff6a1a), srgb(0xffffff), srgb(0xff8a3a)),
+        "orange": (srgb(0xff6a1a), srgb(0xfff4ea), srgb(0xff8a3a)),
         "kohaku": (srgb(0xfff4ea), srgb(0xe8391a), srgb(0xffffff)),
         "gold":   (srgb(0xffc21a), srgb(0xfff0a0), srgb(0xffd45a)),
-        "sanke":  (srgb(0xfffaf0), srgb(0xe8451a), srgb(0x222222)),
+        "sanke":  (srgb(0xfffaf0), srgb(0xe8451a), srgb(0x1e1e22)),
+        "black":  (srgb(0x22252c), srgb(0xff7a2a), srgb(0x3a3e48)),
+        "platinum": (srgb(0xe9eef2), srgb(0xc9d3dc), srgb(0xffffff)),
     }[scheme]
-    def body_col(p, n):
-        k = noise.noise(Vector((p.x * 7, p.y * 4, p.z * 7)) + Vector((1, 2, 3)))
-        c = pal[0] if k > -0.08 else pal[1]
-        if scheme == "sanke" and k > 0.34:
-            c = pal[2]
-        return c
-    add_ico(K, (0, 0, 0), (0.075, 0.34, 0.07), 3, body_col, amp=0.0)
-    # head taper handled by shape; tail
-    t0 = K.vert(Vector((0, 0.32, 0.0)))
-    for sgn in (-1, 1):
-        a = K.vert(Vector((0, 0.5, 0.0)))
-        b_ = K.vert(Vector((sgn * 0.1, 0.62, 0.0)))
-        c_ = K.vert(Vector((sgn * 0.03, 0.55, 0.0)))
-        K.face([t0, b_, a], [pal[1], pal[2], pal[2]], smooth_=False)
-        K.face([t0, a, b_], [pal[1], pal[2], pal[2]], smooth_=False)
-    # dorsal
-    d0 = K.vert(Vector((0, -0.05, 0.065)))
-    d1 = K.vert(Vector((0, 0.15, 0.065)))
-    d2 = K.vert(Vector((0, 0.18, 0.17)))
-    K.face([d0, d1, d2], [pal[0], pal[0], pal[2]], smooth_=False)
-    K.face([d0, d2, d1], [pal[0], pal[0], pal[2]], smooth_=False)
-    for sgn in (-1, 1):
-        p0 = K.vert(Vector((sgn * 0.06, -0.12, -0.02)))
-        p1 = K.vert(Vector((sgn * 0.18, -0.02, -0.06)))
-        p2 = K.vert(Vector((sgn * 0.07, 0.0, -0.03)))
-        K.face([p0, p1, p2], pal[2], smooth_=False)
-        K.face([p0, p2, p1], pal[2], smooth_=False)
+    seed = hash(name) % 100
+    L, W, H = 0.3, 0.07, 0.062
+    def bpos(n):
+        t = (n.y + 1) / 2                                      # 0 head, 1 tail
+        w = W * (1 - 0.82 * t ** 1.5) * (0.82 + 0.18 * min(1, t * 6))
+        h = H * (1 - 0.75 * t ** 1.6) * (0.85 + 0.15 * min(1, t * 6))
+        return Vector((n.x * w, n.y * L, n.z * (h if n.z > 0 else h * 0.85)))
+    def bcol(n, p):
+        k = noise.noise(Vector((p.x * 9 + seed, p.y * 6, p.z * 9)))
+        c = pal[0] if k > -0.05 else pal[1]
+        if scheme == "sanke" and noise.noise(Vector((p.x * 14, p.y * 11 + seed, 3.0))) > 0.38: c = pal[2]
+        return mix(c, srgb(0xf6f2ea), smooth(-0.3, -0.9, n.z) * 0.6)
+    add_shape(K, (0, 0, 0), 3, bpos, bcol)
+    def fin(pts, col):
+        vs = [K.vert(Vector(p)) for p in pts]
+        cs = [col] * len(vs)
+        K.face(vs, cs, smooth_=False)
+        K.face(list(reversed(vs)), list(reversed(cs)), smooth_=False)
+    fc = mix(pal[2], srgb(0xffffff), 0.35)
+    # tail: two vertical lobes
+    fin([(0, 0.27, 0.0), (0, 0.48, 0.11), (0, 0.44, 0.02)], fc)
+    fin([(0, 0.27, 0.0), (0, 0.44, -0.02), (0, 0.48, -0.1)], fc)
+    fin([(0, 0.27, 0.0), (0, 0.44, 0.02), (0, 0.44, -0.02)], fc)
+    # dorsal fin along the back
+    fin([(0, -0.06, 0.055), (0, 0.16, 0.035), (0, 0.12, 0.1), (0, -0.02, 0.1)], fc)
+    for sx in (-1, 1):                                         # pectoral and pelvic fins
+        fin([(sx * 0.05, -0.15, -0.025), (sx * 0.17, -0.05, -0.05), (sx * 0.13, 0.0, -0.045), (sx * 0.05, -0.08, -0.03)], fc)
+        fin([(sx * 0.03, 0.06, -0.035), (sx * 0.09, 0.14, -0.05), (sx * 0.04, 0.14, -0.04)], fc)
+    for sx in (-1, 1):                                         # eyes + barbels
+        add_ico(K, (sx * 0.045, -0.235, 0.018), (0.009, 0.009, 0.009), 1, lambda p, n: srgb(0x111111))
+        add_tube(K, (sx * 0.02, -0.29, -0.012), (sx * 0.045, -0.32, -0.03), 0.003, 0.002, 4, pal[0], pal[0])
     return K.to_obj(name, MAT["animal"])
 
-for i, sch in enumerate(("orange", "kohaku", "gold", "sanke", "orange")):
+for i, sch in enumerate(("orange", "kohaku", "gold", "sanke", "black", "platinum", "kohaku")):
     o = koi("Koi_%d" % i, sch)
     o.location = (0, 0, -0.6)
 
-def wing_shape(name, mirror, col_in, col_out, spot):
+# butterflies: one wing mesh per species, drawn as a polar fan so colour can vary across the wing
+BUTTERFLIES = {
+    "monarch":   dict(base=0xf08a1a, edge=0x16120e, inner=0xc8560e, dot=0xfff4e0, vein=True),
+    "morpho":    dict(base=0x2f7dff, edge=0x0e1424, inner=0x6fd0ff, dot=0xffffff, vein=False),
+    "brimstone": dict(base=0xf7ec7a, edge=0xc9bb3a, inner=0xfff6b0, dot=0xff9a2a, vein=False),
+    "peacock":   dict(base=0xa8281e, edge=0x3a1a14, inner=0x7a1c14, dot=0x5ab0ff, vein=False, eyes=True),
+}
+def butterfly_wing(spname, d):
     W = Builder()
-    outline = [(0.0, 0.0), (0.05, 0.08), (0.15, 0.17), (0.25, 0.14), (0.27, 0.05), (0.2, -0.01),
-               (0.18, -0.07), (0.2, -0.15), (0.12, -0.16), (0.04, -0.09)]
-    ctr = W.vert(Vector((0, 0, 0)))
-    vs = [W.vert(Vector((x * mirror, y, 0))) for x, y in outline[1:]]
-    for i in range(len(vs) - 1):
-        d1 = math.hypot(*outline[1 + i]) / 0.3
-        d2 = math.hypot(*outline[2 + i]) / 0.3
-        c1 = mix(col_in, col_out, d1)
-        c2 = mix(col_in, col_out, d2)
-        if (i % 3 == 1):
-            c1 = c2 = spot
-        W.face([ctr, vs[i], vs[i + 1]], [col_in, c1, c2], smooth_=False)
-    return W.to_obj(name, MAT["animal"])
-
-wing_shape("BflyWingL", 1, srgb(0x2a1a10), srgb(0xff8a1a), srgb(0xfff2d0))
-wing_shape("BflyWingR", -1, srgb(0x2a1a10), srgb(0xff8a1a), srgb(0xfff2d0))
+    base, edge, inner, dot = srgb(d["base"]), srgb(d["edge"]), srgb(d["inner"]), srgb(d["dot"])
+    rings = (0.0, 0.3, 0.62, 0.84, 0.93, 1.0)
+    def wing(a0, a1, steps, R):
+        grid = []
+        for i in range(steps + 1):
+            a = a0 + (a1 - a0) * i / steps
+            r = R(a)
+            col_row = []
+            for k in rings:
+                p = Vector((math.cos(a) * r * k, -math.sin(a) * r * k, 0.0))
+                if k < 0.32: c = mix(inner, base, k / 0.32)
+                elif k < 0.84: c = base
+                elif k < 0.95: c = edge if not (d.get("eyes") and 0.3 < (a - a0) / (a1 - a0) < 0.6) else dot
+                else: c = edge
+                if k > 0.9 and i % 2 == 0 and k < 0.97: c = dot if not d.get("eyes") else edge
+                if d.get("vein") and i % 3 == 0 and 0.2 < k < 0.85: c = mix(c, edge, 0.75)
+                col_row.append((W.vert(p), c))
+            grid.append(col_row)
+        for i in range(steps):
+            for k in range(len(rings) - 1):
+                a, b_, c_, d_ = grid[i][k], grid[i + 1][k], grid[i + 1][k + 1], grid[i][k + 1]
+                if k == 0:
+                    W.face([a[0], c_[0], d_[0]], [a[1], c_[1], d_[1]], smooth_=False)
+                    W.face([a[0], d_[0], c_[0]], [a[1], d_[1], c_[1]], smooth_=False)
+                else:
+                    W.face([a[0], b_[0], c_[0], d_[0]], [a[1], b_[1], c_[1], d_[1]], smooth_=False)
+                    W.face([d_[0], c_[0], b_[0], a[0]], [d_[1], c_[1], b_[1], a[1]], smooth_=False)
+    deg = math.radians
+    wing(deg(4), deg(78), 9, lambda a: 0.125 * (0.7 + 0.3 * math.sin((a - deg(4)) / deg(74) * math.pi) ** 0.6) * (1.12 if a > deg(50) else 1.0))
+    wing(deg(-72), deg(0), 7, lambda a: 0.092 * (0.75 + 0.25 * math.sin((a + deg(72)) / deg(72) * math.pi)))
+    o = W.to_obj("BflyWing_" + spname, MAT["animal"])
+    o.location = (0, 0, -50)
+for spn, d in BUTTERFLIES.items():
+    butterfly_wing(spn, d)
 BB = Builder()
-add_ico(BB, (0, 0, 0), (0.014, 0.075, 0.014), 2, lambda p, n: srgb(0x1c120a))
-add_ico(BB, (0, -0.085, 0), (0.017, 0.017, 0.017), 2, lambda p, n: srgb(0x1c120a))
+add_ico(BB, (0, 0.01, 0), (0.011, 0.05, 0.011), 2, lambda p, n: srgb(0x1c120a))
+add_ico(BB, (0, -0.055, 0.003), (0.012, 0.012, 0.012), 2, lambda p, n: srgb(0x1c120a))
+for sx in (-1, 1):
+    add_tube(BB, (sx * 0.004, -0.062, 0.008), (sx * 0.03, -0.11, 0.035), 0.0018, 0.0018, 4, srgb(0x1c120a), srgb(0x1c120a))
+    add_ico(BB, (sx * 0.03, -0.11, 0.035), (0.004, 0.004, 0.004), 1, lambda p, n: srgb(0x1c120a))
 bfly_body = BB.to_obj("BflyBody", MAT["animal"])
-for o in ("BflyWingL", "BflyWingR", "BflyBody"):
-    bpy.data.objects[o].location = (0, 0, -50)   # parked; three.js clones & animates them
+bfly_body.location = (0, 0, -50)
+
+# grey heron (body + two legs that swing when it walks)
+HB = Builder()
+grey, dgrey, white, black, yel = srgb(0x9aa3ab), srgb(0x5f6a74), srgb(0xeef0ee), srgb(0x18191c), srgb(0xe8b23a)
+def hb_pos(n):
+    t = (n.y + 1) / 2
+    w = 0.11 * (1 - 0.45 * t ** 1.5)
+    return Vector((n.x * w, 0.02 + n.y * 0.27, 0.0 + n.z * 0.12 * (1 - 0.3 * t) - 0.07 * n.y))
+add_shape(HB, (0, 0, 0.1), 3, hb_pos, lambda n, p: mix(white, mix(grey, dgrey, smooth(0.2, 0.9, n.z)), smooth(-0.5, 0.0, n.y + n.z * 0.3)))
+neck = [(0, -0.2, 0.17), (0, -0.25, 0.3), (0, -0.19, 0.4), (0, -0.23, 0.5), (0, -0.3, 0.55)]
+for i in range(len(neck) - 1):
+    add_tube(HB, neck[i], neck[i + 1], 0.045 - i * 0.004, 0.041 - i * 0.004, 10, white, white)
+add_shape(HB, (0, -0.33, 0.57), 3, lambda n: Vector((n.x * 0.034, n.y * 0.058, n.z * 0.036)), lambda n, p: black if (n.z > 0.35 and abs(n.x) < 0.8) else white)
+add_tube(HB, (0, -0.31, 0.6), (0, -0.2, 0.63), 0.008, 0.002, 5, black, black)          # crest plume
+add_shape(HB, (0, -0.43, 0.565), 2, lambda n: Vector((n.x * 0.011, n.y * 0.075 - 0.01, n.z * 0.011)), lambda n, p: yel)
+for sx in (-1, 1):
+    add_ico(HB, (sx * 0.026, -0.355, 0.585), (0.007, 0.007, 0.007), 1, lambda p, n: yel)
+add_shape(HB, (0, 0.27, 0.06), 2, lambda n: Vector((n.x * 0.06, n.y * 0.08, n.z * 0.03)), lambda n, p: dgrey)  # tail
+heron = HB.to_obj("HeronBody", MAT["animal"]); heron.location = (0, 0, -50)
+for side, sx in (("L", -1), ("R", 1)):
+    HL = Builder()
+    leg = srgb(0x8a7a5a)
+    add_tube(HL, (0, 0, 0), (0, 0.02, -0.32), 0.014, 0.011, 6, leg, leg)
+    add_tube(HL, (0, 0.02, -0.32), (0, -0.01, -0.62), 0.011, 0.009, 6, leg, leg)
+    for a in (-0.5, 0.0, 0.5):
+        add_tube(HL, (0, -0.01, -0.62), (math.sin(a) * 0.09, -0.01 - math.cos(a) * 0.09, -0.62), 0.006, 0.004, 4, leg, leg)
+    add_tube(HL, (0, -0.01, -0.62), (0, 0.06, -0.62), 0.005, 0.003, 4, leg, leg)
+    o = HL.to_obj("HeronLeg" + side, MAT["animal"]); o.location = (0, 0, -50)
+
+# rabbit
+RB = Builder()
+fur, fur2, wht, pink = srgb(0x8a7258), srgb(0x6e5a44), srgb(0xf2ece4), srgb(0xd8a0a0)
+add_shape(RB, (0, 0.03, 0.11), 3, lambda n: Vector((n.x * 0.085 * (1 + 0.15 * max(0, n.y)), n.y * 0.13, n.z * 0.095)), lambda n, p: mix(wht, mix(fur, fur2, smooth(0.3, 1, n.z)), smooth(-0.7, -0.2, n.z)))
+add_shape(RB, (0, -0.11, 0.18), 3, lambda n: Vector((n.x * 0.055, n.y * 0.065, n.z * 0.055)), lambda n, p: mix(wht, fur, smooth(-0.6, -0.1, n.z)))
+for sx in (-1, 1):
+    add_shape(RB, (sx * 0.025, -0.085, 0.27), 2, lambda n, sx=sx: Vector((n.x * 0.018, n.y * 0.022 + n.z * 0.02, n.z * 0.075)), lambda n, p, sx=sx: pink if (n.y < -0.3 and abs(n.x) < 0.6) else fur)
+    add_ico(RB, (sx * 0.035, -0.14, 0.2), (0.009, 0.009, 0.009), 1, lambda p, n: srgb(0x111111))
+    add_shape(RB, (sx * 0.06, 0.08, 0.06), 2, lambda n: Vector((n.x * 0.04, n.y * 0.08, n.z * 0.055)), lambda n, p: fur)
+add_ico(RB, (0, -0.172, 0.17), (0.008, 0.006, 0.006), 1, lambda p, n: pink)
+add_ico(RB, (0, 0.17, 0.13), (0.035, 0.035, 0.035), 2, lambda p, n: wht)
+rabbit = RB.to_obj("Rabbit", MAT["animal"]); rabbit.location = (0, 0, -50)
 
 
 # ================================================================ extra props
@@ -780,6 +945,7 @@ shop_anchor = bpy.data.objects.new("ShopAnchor", None)
 bpy.context.scene.collection.objects.link(shop_anchor)
 shop_anchor.location = (SHOP.x, SHOP.y, gz + 1.6)
 COLL.append((SHOP.x, SHOP.y, 2.25))
+AOC.append((SHOP.x, SHOP.y, 3.3, 0.5))
 
 # ---- rowboat moored beside the dock -----------------------------------------
 BT = Builder()
@@ -826,7 +992,7 @@ boat.location = (BOAT.x, BOAT.y, WATER_Z + 0.13)
 
 # ---- bench by the cherry tree -------------------------------------------------
 BN = Builder()
-bnx, bny = 10.4, 7.9
+bnx, bny = BENCH
 bbase = Vector((bnx, bny, terrain_h(bnx, bny)))
 byaw = math.atan2(-bny, -bnx)
 def BL(x, y, z): return loc(bbase, byaw, (x, y, z))
@@ -841,6 +1007,7 @@ for sy in (-0.75, 0.75):
     add_box(BN, BL(0.0, sy, 0.64), (0.4, 0.06, 0.05), wood2, rot=byaw)
 bench = BN.to_obj("Bench", MAT["wood"])
 COLL.append((bnx, bny, 0.95))
+AOC.append((bnx, bny, 1.2, 0.3))
 
 # ---- mushrooms -------------------------------------------------------------------
 MU = Builder()
@@ -873,6 +1040,7 @@ logm = LG.to_obj("Log", MAT["wood"])
 for k in range(4):
     pk = la + (lb - la) * (k / 3)
     COLL.append((pk.x, pk.y, 0.45))
+    AOC.append((pk.x, pk.y, 0.9, 0.3))
 
 # ---- flowering bushes --------------------------------------------------------------
 BU = Builder()
@@ -885,12 +1053,13 @@ while len(bush_pts) < 30 and tries_b < 400:
     bx_, by_ = r_ * math.cos(th_), r_ * math.sin(th_)
     if abs(math.atan2(math.sin(th_ - dock_theta), math.cos(th_ - dock_theta))) < 0.45:
         continue
-    if math.hypot(bx_ - SHOP.x, by_ - SHOP.y) < 4 or math.hypot(bx_ - bnx, by_ - bny) < 2.5:
+    if math.hypot(bx_ - SHOP.x, by_ - SHOP.y) < 4 or math.hypot(bx_ - bnx, by_ - bny) < 2.5 or path_dist(bx_, by_) < 1.7:
         continue
     bush_pts.append((bx_, by_))
 bloom_sets = [[0xff9ec4, 0xffffff], [0xffffff, 0xfff2a8], [0x9ec8ff, 0xc9a7ff], [0xff7b6b, 0xffd23f]]
 for (bx_, by_) in bush_pts:
     COLL.append((bx_, by_, 0.85))
+    AOC.append((bx_, by_, 1.5, 0.32))
     bz_ = terrain_h(bx_, by_)
     bl = random.choice(bloom_sets)
     base_g = jitter(mix(srgb(0x2f7a22), srgb(0x56b03a), rnd()), 0.1)
@@ -912,7 +1081,7 @@ fern_n = 0
 while fern_n < 110:
     r_ = uni(7, 30); th_ = rnd() * math.tau
     fx, fy = r_ * math.cos(th_), r_ * math.sin(th_)
-    if pond_d(fx, fy) < 1.8 or terrain_h(fx, fy) < 0.05:
+    if pond_d(fx, fy) < 1.8 or terrain_h(fx, fy) < 0.05 or path_dist(fx, fy) < 1.3:
         continue
     fz = terrain_h(fx, fy) - 0.02
     ph = rnd()
@@ -957,6 +1126,26 @@ for i in range(len(ring) - 1):
     DW.face([dctr, ring[i], ring[i + 1]], [srgb(0xe8f4ff), srgb(0xcfe6ff), srgb(0xcfe6ff)], smooth_=False)
 dw = DW.to_obj("DflyWing", MAT["animal"])
 dw.location = (0, 0, -50)
+
+# ------------------------------------------------- baked ambient occlusion
+import numpy as np
+def bake_ao(obj, strength=1.0):
+    me = obj.data
+    co = np.empty(len(me.vertices) * 3, 'f4'); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+    vi = np.empty(len(me.loops), 'i4'); me.loops.foreach_get('vertex_index', vi)
+    attr = me.color_attributes['Col']
+    col = np.empty(len(attr.data) * 4, 'f4'); attr.data.foreach_get('color', col); col = col.reshape(-1, 4)
+    x, y = co[vi, 0], co[vi, 1]
+    f = np.ones(len(vi), 'f4')
+    for (ox, oy, r, k) in AOC:
+        f *= 1 - k * strength * np.exp(-((x - ox) ** 2 + (y - oy) ** 2) / (r * r) * 1.6)
+    f = np.maximum(f, 0.42)
+    col[:, :3] *= f[:, None]
+    attr.data.foreach_set('color', col.ravel())
+    me.update()
+for ob, k in ((terrain, 1.0), (grass, 0.85), (flowers, 0.7), (ferns, 0.6), (reeds, 0.5)):
+    bake_ao(ob, k)
+print("baked AO with", len(AOC), "occluders")
 
 # ------------------------------------------------------------ scene metadata
 meta = bpy.data.objects.new("PondMeta", None)
