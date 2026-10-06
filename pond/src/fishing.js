@@ -17,35 +17,25 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function shoreR(th) { return 8.2 + 1.6 * Math.sin(2 * th + 0.6) + 0.9 * Math.sin(3 * th + 2.0) + 0.5 * Math.sin(5 * th + 1.0); }
 
 export function initFishing(ctx) {
-  const { scene, camera, controls, addRipple, hAt, WATER_Y, audio, getPreset, getWeather } = ctx;
+  const { scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset, getWeather } = ctx;
   const save = G.state;
 
-  /* --------------------------- dock / rod placement ---------------------- */
-  const TH = -Math.PI / 2 - 0.35;                 // same angle as the dock in build_pond.py
-  const R = shoreR(TH);
-  const sBx = R * Math.cos(TH), sBy = R * Math.sin(TH), uBx = -Math.cos(TH), uBy = -Math.sin(TH);
-  const stand = new THREE.Vector3(sBx + uBx * 4.7, 0.22, -(sBy + uBy * 4.7));
-  const fwd = new THREE.Vector3(uBx, 0, -uBy).normalize();
-  const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
-
+  /* ------------------- the rod, held in front of the first-person camera ----------- */
+  const rodHold = new THREE.Group();
+  rodHold.position.set(0.36, -0.4, -0.5);
+  camera.add(rodHold);
   const rod = new THREE.Group();
-  rod.position.copy(stand).add(new THREE.Vector3(0, 0.25, 0)).addScaledVector(side, 0.35);
-  const rodDir = fwd.clone().multiplyScalar(Math.cos(0.75)).add(new THREE.Vector3(0, Math.sin(0.75), 0)).normalize();
-  rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rodDir);
+  rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-0.16, 0.55, -1).normalize());
+  rod.scale.set(0.55, 0.72, 0.55);
+  rodHold.add(rod);
   const lam = (c, e) => new THREE.MeshLambertMaterial({ color: c, ...(e || {}) });
   const shaftMat = lam(0x9a7a44);
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.028, 3.2, 8).translate(0, 1.6, 0), shaftMat);
   const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.5, 10).translate(0, 0.25, 0), lam(0xc9a36a));
   const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 14).rotateZ(Math.PI / 2).translate(0.06, 0.58, 0), lam(0xb8b8c0));
   rod.add(shaft, grip, reel);
-  rod.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  scene.add(rod);
   const tip = new THREE.Vector3();
   const tipLocal = new THREE.Vector3(0, 3.2, 0);
-
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.22, 0.28), lam(0x5b7a8c));
-  box.position.copy(stand).addScaledVector(side, -0.7).add(new THREE.Vector3(0, 0.22, 0)); box.rotation.y = 0.4; box.castShadow = true;
-  scene.add(box);
 
   /* ------------------------------ bobber & line -------------------------- */
   const topMat = lam(0xff4630, { emissive: 0xff2a10, emissiveIntensity: 0.6 });
@@ -107,7 +97,7 @@ export function initFishing(ctx) {
   }
 
   const TUT = [
-    ['Cast your line', 'Press the Cast button or Space. You can also click the water to aim.'],
+    ['Cast your line', 'Walk with WASD (or the joystick) and look at the pond. Press Space, click, or tap Cast to throw your line.'],
     ['Wait for it', 'Watch the bobber. When it dips, a fish has bitten.'],
     ['It bit!', 'Press Space, or tap, right now to hook it.'],
     ['Reel it in', 'Tap and hold anywhere to move the white bar right. Let go and it slides back left.'],
@@ -170,46 +160,38 @@ export function initFishing(ctx) {
   }
 
   function chooseTarget(aim) {
-    const ok = (v) => hAt(v.x, v.z) < WATER_Y - 0.45 && Math.hypot(v.x, v.z) < 6.2;
-    if (aim) { const d = aim.distanceTo(stand); if (ok(aim) && d > 2.2) return aim.clone().setY(WATER_Y); }
-    for (let i = 0; i < 40; i++) {
-      const v = stand.clone().addScaledVector(fwd, rand(4.2, 9)).addScaledVector(side, rand(-3.4, 3.4)); v.y = WATER_Y;
-      if (ok(v)) return v;
-    }
-    return new THREE.Vector3(0, WATER_Y, 0);
-  }
-
-  function enterFishView() {
-    if (f.fishView) return;
-    f.fishView = true;
-    controls.autoRotate = false; $('orbit').classList.remove('on');
-    f.cam = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1: stand.clone().addScaledVector(fwd, -2.7).setY(2.15), t1: stand.clone().addScaledVector(fwd, 6.5).setY(-0.1) };
-  }
-  function resetCamera() {
-    f.fishView = false;
-    f.cam = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1: new THREE.Vector3(-9, 5.2, 17.5), t1: new THREE.Vector3(0, 0.9, 0) };
+    const eye = player.eye(), fw = player.forward();
+    const ok = (v) => hAt(v.x, v.z) < WATER_Y - 0.45;
+    const inRange = (v) => { const d = Math.hypot(v.x - eye.x, v.z - eye.z); return d > 2 && d < 17; };
+    if (aim && ok(aim) && inRange(aim)) return aim.clone().setY(WATER_Y);
+    if (fw.y < -0.02) { const v = eye.clone().addScaledVector(fw, (WATER_Y - eye.y) / fw.y); if (ok(v) && inRange(v)) return v.setY(WATER_Y); }
+    const h = new THREE.Vector3(fw.x, 0, fw.z).normalize();
+    for (const d of [7, 5, 9, 4, 11, 13]) { const v = eye.clone().addScaledVector(h, d); if (ok(v)) return v.setY(WATER_Y); }
+    return null;
   }
 
   /* -------------------------------- actions ------------------------------ */
   function cast(aim) {
-    if (f.state !== 'idle') return;
-    enterFishView();
+    if (f.state !== 'idle') return false;
+    const tgt = chooseTarget(aim);
+    if (!tgt) { say('Walk closer and look at deeper water to cast'); if (tut.active) { el.coachTitle.textContent = 'Find the water'; el.coachBody.textContent = 'Walk to the pond (WASD or the joystick), look at the water, then press Space or click.'; } return false; }
     if (tut.active && tut.step === 0) tutShow(1);
     el.card.classList.remove('show');
     f.bait = tut.active ? null : G.bait();
     if (f.bait) { G.useBait(); }
     save.stats.casts += 1; G.commit();
-    f.target = chooseTarget(aim);
+    f.target = tgt;
     f.from.copy(tip);
     bobber.visible = line.visible = true;
     setState('cast');
     say(f.bait ? `Casting with ${f.bait.name}` : 'Casting...');
     audio.sfx('cast');
+    return true;
   }
   function reelIn(msg, sfx) {
     if (msg) say(msg);
     if (sfx) audio.sfx(sfx);
-    el.mini.hidden = true; controls.enabled = true; m.hold = false;
+    el.mini.hidden = true; player.freeze(false); m.hold = false;
     f.from.copy(bob);
     setState('reel');
   }
@@ -225,14 +207,14 @@ export function initFishing(ctx) {
     el.note.textContent = `+${Math.round(r.prog * 100)}% Progress Speed`;
     el.arrow.textContent = '←';
     el.mini.hidden = false; el.status.classList.remove('show');
-    controls.enabled = false;
+    player.freeze(true);
     addRipple(f.target.x, f.target.z, 1.2);
     audio.sfx('hook');
     setState('mini');
   }
-  function press() {
+  function press(aim) {
     if (UI.isOpen()) return;
-    if (f.state === 'idle') cast(null);
+    if (f.state === 'idle') cast(aim || null);
     else if (f.state === 'wait') reelIn('Too early. Wait for the bobber to dip.', 'miss');
     else if (f.state === 'bite') hook();
     else if (f.state === 'mini') m.hold = true;
@@ -274,7 +256,7 @@ export function initFishing(ctx) {
     fishMesh.scale.setScalar(0.5 + Math.min(1.5, Math.pow(kg, 0.33) * 0.55));
     f.land = { from: bob.clone() };
     addRipple(bob.x, bob.z, 1.6);
-    el.mini.hidden = true; controls.enabled = true; m.hold = false;
+    el.mini.hidden = true; player.freeze(false); m.hold = false;
     f.sp = null;
     fishMesh.visible = true;
     setState('land');
@@ -290,13 +272,14 @@ export function initFishing(ctx) {
   /* -------------------------------- update ------------------------------- */
   const catchPt = new THREE.Vector3();
   function update(dt, t) {
-    if (f.cam) {
-      f.cam.t = Math.min(1, f.cam.t + dt / 1.8);
-      const e = 1 - Math.pow(1 - f.cam.t, 3);
-      camera.position.lerpVectors(f.cam.p0, f.cam.p1, e);
-      controls.target.lerpVectors(f.cam.t0, f.cam.t1, e);
-      if (f.cam.t >= 1) f.cam = null;
-    }
+    // rod animation: swing back and forward on a cast, dip while a fish pulls
+    let rx = 0;
+    if (f.state === 'cast') { const k = f.t; rx = k < 0.22 ? 0.75 * (k / 0.22) : k < 0.5 ? 0.75 - 1.15 * ((k - 0.22) / 0.28) : -0.4 * Math.max(0, 1 - (k - 0.5) / 0.4); }
+    else if (f.state === 'mini') rx = -0.22 + Math.sin(t * 14) * 0.03;
+    else if (f.state === 'bite') rx = -0.08 + Math.sin(t * 30) * 0.03;
+    else rx = Math.sin(t * 1.3) * 0.015 + (player.moving ? Math.sin(t * 9) * 0.02 : 0);
+    rodHold.rotation.x += (rx - rodHold.rotation.x) * Math.min(1, dt * 16);
+    camera.updateMatrixWorld();
     rod.updateMatrixWorld();
     tip.copy(tipLocal).applyMatrix4(rod.matrixWorld);
 
@@ -374,7 +357,7 @@ export function initFishing(ctx) {
       }
       case 'land': {
         const k = Math.min(1, f.t / 0.95);
-        catchPt.copy(stand).addScaledVector(fwd, 0.2).add(new THREE.Vector3(0, 1.5, 0));
+        catchPt.copy(player.eye()).addScaledVector(player.forward(), 1.4).add(new THREE.Vector3(0, -0.35, 0));
         fishMesh.position.lerpVectors(f.land.from, catchPt, k); fishMesh.position.y += Math.sin(Math.PI * k) * 1.9;
         fishMesh.rotation.set(0, Math.atan2(-(catchPt.z - f.land.from.z), catchPt.x - f.land.from.x), Math.sin(k * 14) * 0.5);
         bob.copy(fishMesh.position); slack = 0.1;
@@ -424,7 +407,7 @@ export function initFishing(ctx) {
   setTimeout(() => { if (!save.tutorial) tutStart(); else say('Press Space or click the water to cast'); }, 6500);
 
   return {
-    update, resetCamera, applyGear, replayTutorial: tutStart,
+    update, applyGear, replayTutorial: tutStart, rod: rodHold, cast: (aim) => press(aim),
     onWaterClick(hit) {
       if (f.state === 'idle') { cast(hit); return true; }
       return f.state !== 'wait';

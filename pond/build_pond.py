@@ -214,6 +214,7 @@ _u = Vector((-math.cos(dock_theta), -math.sin(dock_theta), 0))
 _sdir = Vector((-_u.y, _u.x, 0))
 _S0 = Vector((shore_radius(dock_theta) * math.cos(dock_theta), shore_radius(dock_theta) * math.sin(dock_theta), 0))
 BOAT = _S0 + _u * 3.0 + _sdir * 2.1
+COLL = []   # (x, y, radius) obstacles for the first-person walker
 SHOP = _S0 + _u * -4.2 + _sdir * -3.4
 
 T = Builder()
@@ -474,6 +475,7 @@ for _ in range(32):
         continue
     rock_spots.append((x, y, uni(0.25, 0.8) * (1.8 if rnd() < 0.12 else 1.0)))
 for (x, y, s) in rock_spots:
+    COLL.append((x, y, s * 1.05))
     z = terrain_h(x, y)
     base = jitter(mix(srgb(0x7d7a72), srgb(0x5a5750), rnd()), 0.1)
     add_ico(RK, (x, y, z + s * 0.2), (s * uni(1, 1.5), s * uni(0.9, 1.3), s * uni(0.55, 0.9)), 3,
@@ -511,6 +513,7 @@ def tree(x, y, kind, s):
     if kind == "pine":
         trunk_c0, trunk_c1 = srgb(0x3b2a1e), srgb(0x4d3828)
     rw = (0.34 if kind != "pine" else 0.3) * s
+    COLL.append((x, y, rw * 1.25 + 0.2))
     add_tube(TR, p0 - Vector((0, 0, 0.3)), pm, rw * 1.2, rw * 0.8, 8, trunk_c0, trunk_c1)
     add_tube(TR, pm, p1, rw * 0.8, rw * 0.45, 8, trunk_c1, trunk_c1)
     if kind in ("oak", "cherry"):
@@ -613,6 +616,7 @@ lantern = LT.to_obj("Lantern", MAT["rock"])
 add_box(GL, (lp.x, lp.y, lz + 1.2), (0.34, 0.34, 0.3), srgb(0xffc266))
 lanternglow = GL.to_obj("LanternGlow", MAT["glow"])
 LANTERN_POS = (lp.x, lp.y, lz + 1.2)
+COLL.append((lp.x, lp.y, 0.45))
 
 # ------------------------------------------------------------------- critters
 def duck(name, scale, kind, pos):
@@ -775,6 +779,7 @@ shopglow = SG.to_obj("ShopGlow", MAT["glow"])
 shop_anchor = bpy.data.objects.new("ShopAnchor", None)
 bpy.context.scene.collection.objects.link(shop_anchor)
 shop_anchor.location = (SHOP.x, SHOP.y, gz + 1.6)
+COLL.append((SHOP.x, SHOP.y, 2.25))
 
 # ---- rowboat moored beside the dock -----------------------------------------
 BT = Builder()
@@ -835,6 +840,7 @@ for sy in (-0.75, 0.75):
     add_box(BN, BL(-0.24, sy, 0.62), (0.06, 0.06, 0.45), wood2, rot=byaw)
     add_box(BN, BL(0.0, sy, 0.64), (0.4, 0.06, 0.05), wood2, rot=byaw)
 bench = BN.to_obj("Bench", MAT["wood"])
+COLL.append((bnx, bny, 0.95))
 
 # ---- mushrooms -------------------------------------------------------------------
 MU = Builder()
@@ -864,6 +870,9 @@ add_tube(LG, la, lb, 0.34, 0.3, 12, srgb(0x4a3322), srgb(0x5b402a), cap=True)
 add_ico(LG, (la + lb) / 2 + Vector((0, 0, 0.24)), (1.4, 0.26, 0.13), 3, lambda p, n: mix(srgb(0x3f7a22), srgb(0x6aa83a), noise.noise(p * 4) * 0.5 + 0.5), amp=0.3, seed=3.0, rot=math.atan2(lb.y - la.y, lb.x - la.x))
 add_ico(LG, la + Vector((0.05, 0, 0.0)), (0.34, 0.34, 0.34), 3, lambda p, n: srgb(0xc9a36a), amp=0.05)
 logm = LG.to_obj("Log", MAT["wood"])
+for k in range(4):
+    pk = la + (lb - la) * (k / 3)
+    COLL.append((pk.x, pk.y, 0.45))
 
 # ---- flowering bushes --------------------------------------------------------------
 BU = Builder()
@@ -881,6 +890,7 @@ while len(bush_pts) < 30 and tries_b < 400:
     bush_pts.append((bx_, by_))
 bloom_sets = [[0xff9ec4, 0xffffff], [0xffffff, 0xfff2a8], [0x9ec8ff, 0xc9a7ff], [0xff7b6b, 0xffd23f]]
 for (bx_, by_) in bush_pts:
+    COLL.append((bx_, by_, 0.85))
     bz_ = terrain_h(bx_, by_)
     bl = random.choice(bloom_sets)
     base_g = jitter(mix(srgb(0x2f7a22), srgb(0x56b03a), rnd()), 0.1)
@@ -954,6 +964,7 @@ bpy.context.scene.collection.objects.link(meta)
 meta["water_z"] = WATER_Z
 meta["lantern"] = list(LANTERN_POS)
 meta["dock_theta"] = dock_theta
+meta["colliders"] = json.dumps([[round(x, 2), round(y, 2), round(r, 2)] for x, y, r in COLL])
 meta["pads"] = json.dumps([[round(x, 3), round(y, 3), round(r, 3)] for x, y, r in pads])
 
 # ------------------------------------------------------------- lights/camera

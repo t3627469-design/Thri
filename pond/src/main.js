@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -14,6 +13,7 @@ import { initWeather } from './weather.js';
 import { initUI, open as openPanel, toast } from './ui.js';
 import { icon } from './icons.js';
 import * as G from './game.js';
+import { initPlayer } from './player.js';
 
 /* =====================================================================
    Still Water. Geometry comes from Blender (pond.glb); everything alive
@@ -53,16 +53,12 @@ renderer.shadowMap.autoUpdate = false;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0xf2b992, 0.011);
-const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 1200);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1200);
 camera.position.set(-6, 22, 34);
 
-const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 0.9, 0);
-controls.enableDamping = true; controls.dampingFactor = 0.06;
-controls.minDistance = 3; controls.maxDistance = 23;
-controls.maxPolarAngle = Math.PI * 0.485;
-controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
-controls.enablePan = false;
+scene.add(camera);                 // the held rod is a child of the camera
+let player = null;
+const focus = new THREE.Vector3();  // where the player stands; lights and shadows follow it
 
 const rtMain = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: Q.msaa });
 const composer = new EffectComposer(renderer, rtMain);
@@ -153,6 +149,38 @@ const cur = mk(PRESETS.golden);
 let target = mk(PRESETS.golden);
 let presetKey = 'golden';
 
+/* Automatic day / night: a clock from 0 (midnight) to 1 drives the sun and every preset in between. */
+const DAY_KEYS = [[0.0, 'night', 300], [0.22, 'twilight', 440], [0.28, 'golden', 460], [0.5, 'midday', 540], [0.7, 'golden', 610], [0.78, 'twilight', 630], [0.86, 'night', 660], [1.0, 'night', 660]];
+const JUMP = { golden: 0.68, midday: 0.5, twilight: 0.77, night: 0.95 };
+const PRE = Object.fromEntries(Object.keys(PRESETS).map((k) => [k, mk(PRESETS[k])]));
+let clock = typeof G.state.clock === 'number' ? G.state.clock : 0.64;
+function phaseOf(c) { return (c >= 0.2 && c < 0.25) || (c >= 0.74 && c < 0.83) ? 'twilight' : (c >= 0.25 && c < 0.34) || (c >= 0.6 && c < 0.74) ? 'golden' : c >= 0.34 && c < 0.6 ? 'midday' : 'night'; }
+function sampleDay(c) {
+  let i = 0; while (i < DAY_KEYS.length - 2 && c >= DAY_KEYS[i + 1][0]) i++;
+  const [ta, ka, aza] = DAY_KEYS[i], [tb, kb, azb] = DAY_KEYS[i + 1];
+  let f = clamp((c - ta) / (tb - ta), 0, 1); f = f * f * (3 - 2 * f);
+  const A = PRE[ka], B = PRE[kb];
+  NUM.forEach((n) => (target[n] = A[n] + (B[n] - A[n]) * f));
+  COL.forEach((n) => target[n].copy(A[n]).lerp(B[n], f));
+  target.az = aza + (azb - aza) * f;
+}
+let clockLabelT = 0;
+function tickClock(dt) {
+  const len = (+G.state.dayLen || 12) * 60;
+  if (!G.state.paused) clock = (clock + dt / len) % 1;
+  sampleDay(clock);
+  const ph = phaseOf(clock);
+  if (ph !== presetKey) { presetKey = ph; document.querySelectorAll('[data-time]').forEach((b) => b.classList.toggle('on', b.dataset.time === ph)); }
+  clockLabelT -= dt;
+  if (clockLabelT <= 0) {
+    clockLabelT = 0.5;
+    const mins = Math.floor(clock * 24 * 60), hh = String(Math.floor(mins / 60)).padStart(2, '0'), mm = String(Math.floor(mins % 60 / 10) * 10).padStart(2, '0');
+    $('mood').textContent = `${PRESETS[presetKey].label} \u00b7 ${hh}:${mm}`;
+    const cl = $('clock'); if (cl) cl.textContent = `${hh}:${mm}`;
+  }
+}
+setInterval(() => { G.state.clock = clock; G.saveQuiet(); }, 5000);
+
 const sun = new THREE.DirectionalLight(0xffffff, 3);
 sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 160 });
@@ -178,6 +206,8 @@ const _sunV = new THREE.Vector3(), _camDir = new THREE.Vector3();
 
 function applyTime(dt) {
   const k = 1 - Math.exp(-dt * 1.7);
+  while (target.az - cur.az > 180) cur.az += 360;
+  while (target.az - cur.az < -180) cur.az -= 360;
   NUM.forEach((n) => (cur[n] += (target[n] - cur[n]) * k));
   COL.forEach((n) => cur[n].lerp(target[n], k));
   const wx = weather ? weather.amount : 0;
@@ -189,11 +219,11 @@ function applyTime(dt) {
   wxTint(cur.fog, U.uFogColor.value, wx, 0.5); U.uFogD.value = cur.fogD * (1 + 0.7 * wx);
   scene.fog.color.copy(U.uFogColor.value); scene.fog.density = U.uFogD.value;
   sun.color.copy(cur.sunCol); sun.intensity = cur.sunInt * (1 - 0.72 * wx);
-  sun.position.copy(controls.target).addScaledVector(U.uSunDir.value, 70);
-  sun.target.position.copy(controls.target);
+  sun.position.copy(focus).addScaledVector(U.uSunDir.value, 70);
+  sun.target.position.copy(focus);
   hemi.color.copy(cur.hemiSky); hemi.groundColor.copy(cur.hemiGnd); hemi.intensity = cur.hemiInt * (1 - 0.08 * wx);
   fill.color.copy(cur.hor).lerp(tmpA.setRGB(1, 1, 1), 0.5); fill.intensity = cur.hemiInt * 0.5 * (0.35 + 0.65 * cur.light);
-  fill.position.set(camera.position.x, 0, camera.position.z).setLength(40).setY(26); fill.target.position.copy(controls.target);
+  fill.position.set(camera.position.x, 0, camera.position.z).setLength(40).setY(26); fill.target.position.copy(focus);
   bloom.strength = Q.bloom ? cur.bloom : 0; renderer.toneMappingExposure = cur.exposure;
   const T = U.uTime.value, flick = 1 + Math.sin(T * 7.3) * 0.04 + Math.sin(T * 12.1) * 0.03;
   lanternLight.intensity = cur.lantern * 9 * flick; shopLight.intensity = cur.lantern * 8 * flick;
@@ -679,7 +709,10 @@ function setup(gltf) {
   weather = initWeather({ scene, camera, U, audio });
   hideInRefl.push(weather.mesh, fernO);
   weather.setMode(G.state.weather);
-  fishing = initFishing({ scene, camera, controls, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
+  let colliders = [];
+  try { colliders = JSON.parse((by('PondMeta') && by('PondMeta').userData.colliders) || '[]').map(([x, y, r]) => [x, -y, r]); } catch (e) { /* none */ }
+  player = initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen: () => !$('modal').hidden, getSens: () => +G.state.sens || 1 });
+  fishing = initFishing({ scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
 
   initUI({
     audio,
@@ -687,19 +720,19 @@ function setup(gltf) {
       onGear: () => fishing.applyGear(),
       onReplay: () => fishing.replayTutorial(),
       onSetting: (k, v) => { if (k === 'quality') setQualityMode(v); else if (k === 'weather') weather.setMode(v); },
+      onOpen: () => player && player.exitLock(),
     },
   });
   fishing.applyGear();
 
-  controls.addEventListener('change', () => {
-    const g = Math.max(hAt(camera.position.x, camera.position.z) + 0.6, WATER_Y + 0.45);
-    if (camera.position.y < g) camera.position.y = g;
-  });
+  hideInRefl.push(fishing.rod);
   window.__pond.boat = boat;
 }
 
 /* -------------------------------- animate -------------------------------- */
-const shopLabel = $('shoplabel'), _sp = new THREE.Vector3();
+const shopLabel = $('shoplabel'), _sp = new THREE.Vector3(), _q = new THREE.Quaternion();
+let nearShop = false;
+const intro = { k: 1, from: new THREE.Vector3(), q0: new THREE.Quaternion() };
 function animate() {
   const now = performance.now(), raw = (now - state.last) / 1000, dt = Math.min(raw, 0.05);
   state.last = now; state.frame++;
@@ -708,12 +741,24 @@ function animate() {
   gov.tick(raw);
 
   if (state.started) {
+    tickClock(dt);
+    if (player) {
+      player.update(dt);
+      if (intro.k < 1) {
+        intro.k = Math.min(1, intro.k + Math.min(raw, 0.25) / 4.5);
+        const e = 1 - Math.pow(1 - intro.k, 3);
+        camera.position.lerpVectors(intro.from, player.pos, e);
+        _q.setFromEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ'));
+        camera.quaternion.copy(intro.q0).slerp(_q, e);
+        if (intro.k >= 1) player.freeze(false);
+      } else player.apply();
+      focus.set(player.pos.x, 0, player.pos.z);
+    }
     if (weather) weather.update(dt);
     applyTime(dt);
     if (fishing) fishing.update(dt, t);
     if (creatures) creatures.update(dt, t, { day: cur.day, rain: weather ? weather.amount : 0 });
   }
-  controls.update();
   sky.position.copy(camera.position);
   cullChunks();
 
@@ -722,6 +767,8 @@ function animate() {
     _sp.setFromMatrixPosition(shopAnchor.matrixWorld).add(new THREE.Vector3(0, 1.8, 0));
     const dist = camera.position.distanceTo(_sp);
     _sp.project(camera);
+    nearShop = player ? Math.hypot(player.pos.x - shopAnchor.position.x, player.pos.z - shopAnchor.position.z) < 4.6 : false;
+    shopLabel.classList.toggle('near', nearShop);
     const vis = _sp.z < 1 && dist < 34 && Math.abs(_sp.x) < 1.05 && Math.abs(_sp.y) < 1.05 && !document.body.classList.contains('clean');
     shopLabel.style.opacity = vis ? String(clamp(1.4 - dist / 26, 0.35, 1)) : '0';
     shopLabel.style.transform = `translate(-50%,-100%) translate(${(_sp.x * 0.5 + 0.5) * innerWidth}px, ${(-_sp.y * 0.5 + 0.5) * innerHeight}px)`;
@@ -739,22 +786,15 @@ function animate() {
 
 /* ---------------------------------- UI ----------------------------------- */
 const TIMES = [['golden', 'sunset', 'Golden'], ['midday', 'sun', 'Day'], ['twilight', 'dusk', 'Dusk'], ['night', 'moon', 'Night']];
-function setPreset(key) {
-  presetKey = key; target = mk(PRESETS[key]);
-  document.querySelectorAll('[data-time]').forEach((b) => b.classList.toggle('on', b.dataset.time === key));
-  $('mood').textContent = PRESETS[key].label;
-}
+function setPreset(key) { clock = JUMP[key]; clockLabelT = 0; }
+function setPauseBtn() { const b = $('cycle'); b.innerHTML = icon(G.state.paused ? 'play' : 'pause', 18); b.title = G.state.paused ? 'Resume the day cycle' : 'Pause the day cycle'; b.setAttribute('aria-label', b.title); b.classList.toggle('on', !!G.state.paused); }
 function wireToolbar() {
   const tb = $('timebtns');
-  tb.innerHTML = TIMES.map(([k, ic, l], i) => `<button data-time="${k}" class="${i === 0 ? 'on' : ''}" aria-label="${l}">${icon(ic, 18)}<span>${l}</span></button>`).join('') + `<button id="cycle" title="Drift through the day" aria-label="Drift through the day">${icon('cycle', 18)}</button>`;
-  tb.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-time]'); if (!b) return;
-    cycling = false; $('cycle').classList.remove('on'); setPreset(b.dataset.time);
-  });
-  $('cycle').addEventListener('click', () => { cycling = !cycling; $('cycle').classList.toggle('on', cycling); });
-  setInterval(() => { if (!cycling) return; const keys = Object.keys(PRESETS); setPreset(keys[(keys.indexOf(presetKey) + 1) % keys.length]); }, 14000);
+  tb.innerHTML = `<span id="clock" class="clock">--:--</span>` + TIMES.map(([k, ic, l]) => `<button data-time="${k}" aria-label="Jump to ${l}" title="Jump to ${l}">${icon(ic, 18)}<span>${l}</span></button>`).join('') + `<button id="cycle"></button>`;
+  tb.addEventListener('click', (e) => { const b = e.target.closest('[data-time]'); if (b) setPreset(b.dataset.time); });
+  $('cycle').addEventListener('click', () => { G.state.paused = !G.state.paused; G.commit(); setPauseBtn(); });
+  setPauseBtn();
   $('sound').addEventListener('click', () => { const on = audio.toggle(); $('sound').classList.toggle('on', on); $('sound').innerHTML = `${icon(on ? 'soundOn' : 'soundOff', 18)}<span>${on ? 'Sound on' : 'Sound off'}</span>`; });
-  $('orbit').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; $('orbit').classList.toggle('on', controls.autoRotate); if (controls.autoRotate && fishing) fishing.resetCamera(); });
   $('shot').addEventListener('click', () => (state.shot = true));
   $('hide').addEventListener('click', () => document.body.classList.toggle('clean'));
   $('shopBtn').addEventListener('click', () => openPanel('shop'));
@@ -762,13 +802,13 @@ function wireToolbar() {
   $('settingsBtn').addEventListener('click', () => openPanel('settings'));
   $('sound').innerHTML = `${icon('soundOff', 18)}<span>Sound off</span>`;
 }
-let cycling = false;
 addEventListener('keydown', (e) => {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
   if (e.key === 'h' || e.key === 'H') document.body.classList.toggle('clean');
   const idx = ['1', '2', '3', '4'].indexOf(e.key);
   if (idx >= 0) setPreset(Object.keys(PRESETS)[idx]);
-  if (e.key === 'w' || e.key === 'W') { const nx = { auto: 'rain', rain: 'clear', clear: 'auto' }[G.state.weather] || 'auto'; G.state.weather = nx; G.commit(); weather && weather.setMode(nx); toast(`Weather: ${nx}`); }
+  if (e.code === 'KeyE' && nearShop && $('modal').hidden) { audio.sfx('click'); openPanel('shop'); return; }
+  if (e.key === 'r' || e.key === 'R') { const nx = { auto: 'rain', rain: 'clear', clear: 'auto' }[G.state.weather] || 'auto'; G.state.weather = nx; G.commit(); weather && weather.setMode(nx); toast(`Weather: ${nx}`); }
 });
 
 // click: shop stall, or the water (cast / ripple)
@@ -782,13 +822,17 @@ canvas.addEventListener('pointermove', (e) => {
   canvas.style.cursor = rc.intersectObject(shopMesh, false).length ? 'pointer' : '';
 });
 canvas.addEventListener('pointerup', (e) => {
-  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
-  setNdc(e); rc.setFromCamera(ndc, camera);
+  if (!player || intro.k < 1) return;
+  if (!player.locked && Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
+  // first mouse click captures the mouse for looking around (when the browser allows it)
+  if (e.pointerType === 'mouse' && player.canLock && !player.locked) { player.requestLock(); return; }
+  if (player.locked) ndc.set(0, 0); else setNdc(e);
+  rc.setFromCamera(ndc, camera);
   if (shopMesh && rc.intersectObject(shopMesh, false).length && !(fishing && fishing.busy())) { audio.sfx('click'); openPanel('shop'); return; }
   if (fishing && fishing.busy()) return;
   const hit = rc.ray.intersectPlane(wplane, new THREE.Vector3());
+  if (fishing && fishing.onWaterClick(hit && hAt(hit.x, hit.z) < WATER_Y - 0.05 ? hit : null)) return;
   if (hit && hAt(hit.x, hit.z) < WATER_Y - 0.05) {
-    if (fishing && fishing.onWaterClick(hit)) return;
     addRipple(hit.x, hit.z, 1.3);
     if (audio.on) audio.pluck(523.25 * Math.pow(2, [0, 2, 4, 7, 9][(Math.random() * 5) | 0] / 12), 0.1);
   }
@@ -796,11 +840,12 @@ canvas.addEventListener('pointerup', (e) => {
 $('shoplabel').addEventListener('click', () => openPanel('shop'));
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); setResolution(); });
 
-window.__pond = { scene, camera, controls, U, renderer, composer, G, gov, get qMode() { return qMode; }, openPanel, setQualityMode, get qLevel() { return qLevel; }, get resScale() { return resScale; }, get Q() { return Q; }, setPreset, get weather() { return weather; } };
+window.__pond = { scene, camera, get player() { return player; }, get clock() { return clock; }, set clock(v) { clock = v; }, U, renderer, composer, G, gov, get qMode() { return qMode; }, openPanel, setQualityMode, get qLevel() { return qLevel; }, get resScale() { return resScale; }, get Q() { return Q; }, setPreset, get weather() { return weather; } };
 
 /* ---------------------------------- boot --------------------------------- */
 (async () => {
   try {
+    document.body.classList.toggle('coarse', coarse);
     document.querySelectorAll('[data-i]').forEach((el) => { el.innerHTML = icon(el.dataset.i, +el.dataset.s || 20); });
     wireToolbar();
     applyQuality();
@@ -811,18 +856,12 @@ window.__pond = { scene, camera, controls, U, renderer, composer, G, gov, get qM
     setup(gltf);
     applyQuality();
     applyTime(1);
-    const from = new THREE.Vector3(-6, 22, 34), to = new THREE.Vector3(-9, 5.2, 17.5);
+    // intro: glide down from the sky into the player's eyes
+    intro.from.set(-6, 22, 30); camera.position.copy(intro.from); camera.lookAt(0, 0, 0); intro.q0.copy(camera.quaternion); intro.k = 0;
+    player.freeze(true);
     state.started = true;
     gov.reset();
     animate();
-    const t0 = performance.now();
-    controls.enabled = false;
-    const fly = () => {
-      const k = clamp((performance.now() - t0) / 6500, 0, 1), e = 1 - Math.pow(1 - k, 3);
-      camera.position.lerpVectors(from, to, e); controls.update();
-      if (k < 1) requestAnimationFrame(fly); else controls.enabled = true;
-    };
-    fly();
     document.body.classList.add('ready');
     window.__pondReady = true;
   } catch (e) {

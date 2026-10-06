@@ -10,15 +10,19 @@ Open **`index.html`** in any modern browser (single file, works offline).
 - **Scene (modelled in Blender):** sculpted terrain and pond, ~28,000 grass blades, reeds, ferns, wildflowers, flowering bushes, lily pads, lotus, mossy rocks, trees, a wooden dock, stone lantern, rowboat, bench, mushrooms, a fallen log and a tackle shop stall
 - **Wildlife:** ducks with ducklings, koi under the surface, butterflies, frogs that hop between lily pads, dragonflies and birds
 - **Look:** planar water reflections, caustics, ripples, a sky with clouds, stars, a moon and shooting stars, god rays, mist, falling petals, fireflies, bloom and colour grading
-- **Four times of day** (keys `1`-`4`) and **weather** (`W`): rain darkens the light, fills the pond with ripples and brings out stormy fish
+- **Automatic day and night** (keys `1`-`4` jump the clock) and **weather** (`R`): rain darkens the light, fills the pond with ripples and brings out stormy fish
 - **Sound:** generated wind, water, birds, crickets, rain, frogs and soft chimes (no audio files)
 
+## Walking around
+You explore in **first person**. Click to capture the mouse and look around (or drag), walk with **WASD** / arrow keys, hold **Shift** to run. On a phone, drag on the left half to walk and on the right half to look.
+Day and night pass **automatically** (a full day takes 12 minutes by default; change it in Settings). The clock buttons jump to a time of day and the pause button stops the sun.
+
 ## The fishing game
-Cast from the dock, wait for the bobber to dip, hook it, then win the catch bar at the bottom of the screen.
-- **Space** or click the water to cast, **Space** at the bite, then **hold** (Space / mouse / touch) to move the white bar right and release to let it fall back. Keep it over the fish to fill the bar
+Walk to the water, look at it, wait for the bobber to dip, hook it, then win the catch bar at the bottom of the screen.
+- **Space** or click to cast where you are looking, **Space** at the bite, then **hold** (Space / mouse / touch) to move the white bar right and release to let it fall back. Keep it over the fish to fill the bar
 - **36 species** from Common to Mythic, each drawn from its own parameters (body shape, tail, fins, pattern). Mutations: Shiny, Albino, Giant
 - Time of day and weather change what bites. Catches land in your **bag**
-- **Tackle shop** (click the stall or press `B`): sell fish, buy 6 rods, 5 baits, 6 floats and a bigger bag. Gear is level gated
+- **Tackle shop** (walk up to the stall and press `E`, or press `B`): sell fish, buy 6 rods, 5 baits, 6 floats and a bigger bag. Gear is level gated
 - **Journal** (`J`): every species you have found, stats and mutations. Progress is saved in your browser
 - A guided tutorial runs on your first visit (replay with the help button)
 

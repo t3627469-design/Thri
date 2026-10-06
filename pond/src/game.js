@@ -86,7 +86,7 @@ export const BAGS = [{ cap: 20, cost: 0 }, { cap: 35, cost: 200 }, { cap: 55, co
 
 const KEY = 'stillwater.fishing.v2', OLD = 'stillwater.fishing.v1';
 const blank = () => ({ v: 2, coins: 0, xp: 0, bag: [], bagLv: 0, rods: ['bamboo'], rod: 'bamboo', floats: ['red'], float: 'red', baits: {}, bait: null,
-  caught: {}, stats: { casts: 0, fish: 0, earned: 0 }, tutorial: false, quality: 'auto', weather: 'auto', volume: 0.9 });
+  caught: {}, stats: { casts: 0, fish: 0, earned: 0 }, tutorial: false, quality: 'auto', weather: 'auto', volume: 0.9, dayLen: '12', paused: false, clock: 0.64, sens: 1 });
 
 function load() {
   let s = blank();
@@ -111,6 +111,7 @@ export function commit() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }, 250);
 }
+export function saveQuiet() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
 export function resetAll() { Object.keys(state).forEach((k) => delete state[k]); Object.assign(state, blank()); try { localStorage.removeItem(KEY); localStorage.removeItem(OLD); } catch (e) { /* ignore */ } commit(); }
 
 /* ---------------------------- derived values ---------------------------- */

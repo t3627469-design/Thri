@@ -51,6 +51,17 @@
   /* shop label over the stall */
   #shoplabel { position:fixed; left:0; top:0; z-index:2; opacity:0; transition:opacity .3s; display:flex; align-items:center; gap:7px; padding:6px 12px 6px 9px; border-radius:999px; background:rgba(60,28,20,.78); border:1px solid rgba(255,200,150,.55); color:#ffe9cf; font-size:12.5px; font-weight:600; letter-spacing:.04em; cursor:pointer; white-space:nowrap; will-change:transform; }
   #shoplabel:hover { background:rgba(110,48,30,.9); }
+  #shoplabel kbd { display:none; font:700 11px/1 system-ui,sans-serif; padding:3px 6px; border-radius:5px; background:#ffe9cf; color:#3c1c14; }
+  #shoplabel.near { background:rgba(150,62,36,.92); border-color:#ffd9a0; } #shoplabel.near kbd { display:inline-block; }
+  body:not(.coarse) #shoplabel.near::after { content:"to open"; font-weight:500; opacity:.85; }
+  /* first person */
+  #cross { position:fixed; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%; background:rgba(255,255,255,.85); box-shadow:0 0 0 1.5px rgba(0,0,0,.35); pointer-events:none; z-index:2; opacity:0; transition:opacity .3s; }
+  body.ready #cross { opacity:.9; } body.clean #cross { opacity:0; } body[data-fish=mini] #cross { opacity:0; }
+  body.locked #c { cursor:none; }
+  #joy { position:fixed; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%; border:2px solid rgba(255,255,255,.35); background:rgba(10,18,15,.25); pointer-events:none; opacity:0; transition:opacity .15s; z-index:3; }
+  #joy.on { opacity:1; } #joyKnob { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,236,200,.75); }
+  body.coarse #shoplabel kbd { display:none !important; }
+  .clock { padding:0 8px 0 10px; font-variant-numeric:tabular-nums; font-weight:700; color:var(--accent); align-self:center; letter-spacing:.04em; }
 
   /* status line, catch bar */
   #status { position:fixed; left:50%; bottom:calc(max(16px,env(safe-area-inset-bottom)) + 84px); transform:translateX(-50%) translateY(6px); padding:8px 16px; border-radius:999px; background:var(--glass); border:1px solid var(--edge); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); opacity:0; pointer-events:none; transition:opacity .35s, transform .35s; text-align:center; max-width:calc(100vw - 32px); z-index:3; }
@@ -129,7 +140,7 @@
 
   @media (max-width:1040px) { #mini { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 140px); } #status { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 142px); } }
   @media (max-width:640px) {
-    .hint { display:none; } .title b { font-size:19px; }
+    .hint { display:none; } .grp button[data-time] span { display:none; } .title b { font-size:19px; }
     #mini { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 176px); } #status { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 176px); }
     button { padding:8px 9px; font-size:13px; } .grp button span:not(.ic) { } #card { top:max(110px,14vh); } .cicon { width:92px; }
     .row { grid-template-columns:72px 1fr auto; } #hud { max-width:calc(100vw - 36px); }
@@ -142,13 +153,14 @@
 <canvas id="c" aria-label="A peaceful pond with grass, lily pads, ducks and koi. Drag to look around."></canvas>
 <div class="vig"></div>
 <div class="title"><div class="tl"><b>Still Water</b><span id="mood">Golden hour</span></div><div id="hud"></div></div>
-<div class="hint">Space or click the water: cast · Space at the bite: hook · hold to reel<br>B shop · J journal · W weather · 1-4 time of day · H hides the interface</div>
-<div id="shoplabel" role="button" tabindex="0"><span data-i="shop" data-s="18"></span>Tackle Shop</div>
+<div class="hint">Click to look around · WASD to walk · Shift to run<br>Space or click: cast, hook, hold to reel · E shop when close<br>J journal · R rain · 1-4 jump the clock · H hides the interface</div>
+<div id="cross" aria-hidden="true"></div>
+<div id="shoplabel" role="button" tabindex="0"><span data-i="shop" data-s="18"></span><span>Tackle Shop</span><kbd>E</kbd></div>
 <div id="toasts" aria-live="polite"></div>
 <div class="bar" role="toolbar" aria-label="Controls">
   <div class="grp"><button id="cast" class="cast"></button><button id="shopBtn"><span data-i="shop" data-s="18"></span><span>Shop</span></button><button id="journalBtn"><span data-i="book" data-s="18"></span><span>Journal</span></button><button id="help" title="How to play" aria-label="How to play"><span data-i="help" data-s="18"></span></button></div>
   <div class="grp" id="timebtns" role="group" aria-label="Time of day"></div>
-  <div class="grp"><button id="sound"></button><button id="orbit" class="on"><span data-i="orbit" data-s="18"></span><span>Orbit</span></button><button id="shot" title="Save a picture" aria-label="Save a picture"><span data-i="camera" data-s="18"></span></button><button id="hide" title="Hide interface (H)" aria-label="Hide interface"><span data-i="expand" data-s="18"></span></button><button id="settingsBtn" title="Settings" aria-label="Settings"><span data-i="gear" data-s="18"></span></button></div>
+  <div class="grp"><button id="sound"></button><button id="shot" title="Save a picture" aria-label="Save a picture"><span data-i="camera" data-s="18"></span></button><button id="hide" title="Hide interface (H)" aria-label="Hide interface"><span data-i="expand" data-s="18"></span></button><button id="settingsBtn" title="Settings" aria-label="Settings"><span data-i="gear" data-s="18"></span></button></div>
 </div>
 <div id="status" role="status" aria-live="polite"></div>
 <div id="mini" hidden aria-label="Catch bar: hold to move the white bar right, release to let it slide back">

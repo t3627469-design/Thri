@@ -95,6 +95,8 @@ function seg(name, opts, val) { return `<div class="seg" data-seg="${name}">${op
 function renderSettings() {
   return `<div class="set"><div class="sr"><div><b>Graphics quality</b><span class="meta">Auto adjusts to keep the game smooth. Pick Low if it stutters.</span></div>${seg('quality', [['auto', 'Auto'], ['low', 'Low'], ['med', 'Medium'], ['high', 'High']], G.state.quality)}</div>
     <div class="sr"><div><b>Weather</b><span class="meta">Rain brings stormy fish and a calmer light.</span></div>${seg('weather', [['auto', 'Auto'], ['clear', 'Clear'], ['rain', 'Rain']], G.state.weather)}</div>
+    <div class="sr"><div><b>Length of a day</b><span class="meta">Day and night pass on their own. Pause from the clock in the toolbar.</span></div>${seg('dayLen', [['6', '6 min'], ['12', '12 min'], ['24', '24 min'], ['48', '48 min']], String(G.state.dayLen))}</div>
+    <div class="sr"><div><b>Look sensitivity</b><span class="meta">How fast the view turns with the mouse or finger.</span></div><input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="${G.state.sens || 1}" aria-label="Look sensitivity"></div>
     <div class="sr"><div><b>Volume</b><span class="meta">Applies when sound is on.</span></div><input id="vol" type="range" min="0" max="1" step="0.05" value="${G.state.volume}" aria-label="Volume"></div>
     <div class="sr"><div><b>Tutorial</b><span class="meta">Walk through casting and the catch bar again.</span></div><button data-replay>Replay</button></div>
     <div class="sr"><div><b>Erase progress</b><span class="meta">Removes coins, fish, gear and your journal.</span></div><button class="danger" data-reset>Erase</button></div></div>`;
@@ -146,7 +148,8 @@ export function initUI(opts) {
   document.querySelectorAll('[data-i]').forEach((el) => { el.innerHTML = icon(el.dataset.i, +el.dataset.s || 20); });
   document.addEventListener('click', onClick);
   $('modal').addEventListener('pointerdown', (e) => { if (e.target === $('modal')) close(); });
-  $('modal').addEventListener('input', (e) => { if (e.target.id === 'vol') { G.state.volume = +e.target.value; G.commit(); audio.setVolume(G.state.volume); } });
+  $('modal').addEventListener('input', (e) => { if (e.target.id === 'vol') { G.state.volume = +e.target.value; G.saveQuiet(); audio.setVolume(G.state.volume); }
+    if (e.target.id === 'sens') { G.state.sens = +e.target.value; G.saveQuiet(); } });
   G.onChange(() => { renderHud(); if (!$('modal').hidden) render(); });
   renderHud();
   addEventListener('keydown', (e) => {
