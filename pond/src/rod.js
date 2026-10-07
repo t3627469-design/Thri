@@ -15,6 +15,11 @@ const STYLES = {
   moonwood: { base: '#aebfe6', alt: '#e8f0ff', wrap: 0xdfe6f0, reel: 0x8b97b0, metal: 0xe6ecf4, kind: 'glow', glow: 0x6f8fff },
   koi:      { base: '#f06a2a', alt: '#fff2e6', wrap: 0xffcf5a, reel: 0xb8462a, metal: 0xffcf5a, kind: 'patches', glow: 0xff7a3a },
   dragon:   { base: '#1fa37a', alt: '#f4d36a', wrap: 0xf4d36a, reel: 0x125a44, metal: 0xf4d36a, kind: 'bands', glow: 0x2fd6a1 },
+  maple:    { base: '#b8442a', alt: '#e8a23a', wrap: 0x2a1a10, reel: 0x5a2a18, metal: 0xd8b070, kind: 'leaves' },
+  emberoak: { base: '#2a1a14', alt: '#ff6a1a', wrap: 0xff8a3a, reel: 0x1a1210, metal: 0xd88a4a, kind: 'cracks', glow: 0xff5a10 },
+  aurora:   { base: '#2fb8a8', alt: '#b48aff', wrap: 0xe8f4ff, reel: 0x2a4a6a, metal: 0xd8f0ff, kind: 'aurora', glow: 0x6fe8d8 },
+  celestial:{ base: '#141a4a', alt: '#ffffff', wrap: 0xd8c070, reel: 0x10143a, metal: 0xd8c070, kind: 'stars', glow: 0x4a5aff },
+  leviathan:{ base: '#145a52', alt: '#3ad8b0', wrap: 0xc8e8d0, reel: 0x0a3a34, metal: 0xa8d8c8, kind: 'scales', glow: 0x2ad8a8 },
 };
 
 function blankTexture(st) {
@@ -36,6 +41,21 @@ function blankTexture(st) {
   } else if (st.kind === 'bands') {
     for (let y = 30; y < 512; y += 64) { g.fillStyle = st.alt; g.fillRect(0, y, 64, 3); }
     for (let i = 0; i < 80; i++) { g.fillStyle = 'rgba(200,255,230,.25)'; g.fillRect(Math.random() * 64, Math.random() * 512, 2, 6); }
+  }
+  if (st.kind === 'leaves') {
+    for (let i = 0; i < 26; i++) { g.save(); g.translate(Math.random() * 64, Math.random() * 512); g.rotate(Math.random() * 6.3); g.fillStyle = st.alt; g.beginPath(); g.moveTo(0, -9); for (let k = 1; k < 10; k++) { const a = (k / 10) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? 9 : 4; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.fill(); g.restore(); }
+  } else if (st.kind === 'cracks') {
+    g.strokeStyle = st.alt; g.lineWidth = 1.6; g.shadowColor = st.alt; g.shadowBlur = 6;
+    for (let i = 0; i < 18; i++) { let x = Math.random() * 64, y = Math.random() * 512; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 5; k++) { x += (Math.random() - 0.5) * 20; y += Math.random() * 26; g.lineTo(x, y); } g.stroke(); }
+  } else if (st.kind === 'aurora') {
+    const gr = g.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, st.base); gr.addColorStop(0.5, st.alt); gr.addColorStop(1, st.base); g.fillStyle = gr; g.fillRect(0, 0, 64, 512);
+    for (let i = 0; i < 6; i++) { g.strokeStyle = 'rgba(220,255,250,.35)'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, i * 90); g.bezierCurveTo(20, i * 90 + 40, 44, i * 90 - 20, 64, i * 90 + 30); g.stroke(); }
+  } else if (st.kind === 'stars') {
+    for (let i = 0; i < 160; i++) { const s = Math.random() < 0.15 ? 2.2 : 1.1; g.fillStyle = `rgba(255,255,255,${0.5 + Math.random() * 0.5})`; g.fillRect(Math.random() * 64, Math.random() * 512, s, s); }
+    for (let y = 60; y < 512; y += 120) { g.fillStyle = 'rgba(216,192,112,.8)'; g.fillRect(0, y, 64, 2); }
+  } else if (st.kind === 'scales') {
+    g.strokeStyle = st.alt; g.lineWidth = 1.4;
+    for (let y = 0; y < 512; y += 10) for (let x = (y / 10) % 2 ? 0 : 6; x < 64; x += 12) { g.beginPath(); g.arc(x, y, 6, 0, Math.PI); g.stroke(); }
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 4;
@@ -123,7 +143,10 @@ export function createRod() {
 
   /* ------------------------------ api ------------------------------------ */
   const texCache = {};
+  let curStyle = null;
   function setStyle(id, rodDef) {
+    if (id === curStyle) return;
+    curStyle = id;
     const st = STYLES[id] || STYLES.bamboo;
     if (!texCache[id]) texCache[id] = blankTexture(st);
     blankMat.map = texCache[id]; blankMat.needsUpdate = true;

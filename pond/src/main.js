@@ -175,7 +175,7 @@ function tickClock(dt) {
   if (clockLabelT <= 0) {
     clockLabelT = 0.5;
     const mins = Math.floor(clock * 24 * 60), hh = String(Math.floor(mins / 60)).padStart(2, '0'), mm = String(Math.floor(mins % 60 / 10) * 10).padStart(2, '0');
-    $('mood').textContent = `${PRESETS[presetKey].label} \u00b7 ${hh}:${mm}`;
+    $('mood').textContent = `${area === 'maple' ? 'Maple Hollow \u00b7 ' : ''}${PRESETS[presetKey].label} \u00b7 ${hh}:${mm}`;
     const cl = $('clock'); if (cl) cl.textContent = `${hh}:${mm}`;
   }
 }
@@ -194,7 +194,7 @@ const shopLight = new THREE.PointLight(0xffb454, 0, 12, 1.6);
 scene.add(lanternLight, shopLight);
 
 const fireU = { uTime: U.uTime, uScale: U.uScale, uAmount: { value: 0 }, uBlink: { value: 0 }, uColor: { value: new THREE.Color() } };
-const petalU = { uTime: U.uTime, uScale: U.uScale, uLight: U.uLight, uAmount: { value: 1 } };
+const petalU = { uTime: U.uTime, uScale: U.uScale, uLight: U.uLight, uAmount: { value: 1 }, uLeaf: { value: 0 } };
 const mistU = { uTime: U.uTime, uFogColor: U.uFogColor, uAmount: { value: 0.3 }, uLight: U.uLight };
 let lanternMat = null, shopGlowMat = null, weather = null, fishing = null, creatures = null;
 const audio = new Ambience();
@@ -283,13 +283,13 @@ sky.renderOrder = -10; sky.frustumCulled = false;
 scene.add(sky);
 
 /* ------------------------------- water mesh ------------------------------ */
-function makeWater() {
+function makeWater(ox = 0, heightTex = null) {
   const m = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, uniforms: U,
+    transparent: true, depthWrite: false, uniforms: { ...U, uHeight: { value: heightTex }, uOrigin: { value: ox } },
     vertexShader: `varying vec3 vWP; void main(){ vec4 w = modelMatrix*vec4(position,1.0); vWP = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
     fragmentShader: /* glsl */`
       varying vec3 vWP;
-      uniform float uTime, uLight, uFogD, uRain, uUseRefl; uniform vec3 uFogColor; uniform sampler2D uHeight, uReflTex; uniform mat4 uReflMat; uniform vec4 uRip[12];
+      uniform float uTime, uLight, uFogD, uRain, uUseRefl, uOrigin; uniform vec3 uFogColor; uniform sampler2D uHeight, uReflTex; uniform mat4 uReflMat; uniform vec4 uRip[12];
       ${NOISE}${SKY_FN}
       float caustic(vec2 p){
         float a = 0.0; vec2 q = p;
@@ -327,7 +327,7 @@ function makeWater() {
         return g;
       }
       void main(){
-        vec2 hUV = vec2((vWP.x+${EXT}.0)/${(EXT * 2).toFixed(1)}, (-vWP.z+${EXT}.0)/${(EXT * 2).toFixed(1)});
+        vec2 hUV = vec2((vWP.x-uOrigin+${EXT}.0)/${(EXT * 2).toFixed(1)}, (-vWP.z+${EXT}.0)/${(EXT * 2).toFixed(1)});
         float th = texture2D(uHeight, hUV).r;
         float depth = ${WATER_Y.toFixed(2)} - th;
         if(depth <= 0.0) discard;
@@ -363,7 +363,7 @@ function makeWater() {
       }`,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(130, 130).rotateX(-Math.PI / 2), m);
-  mesh.position.y = WATER_Y; mesh.renderOrder = 2;
+  mesh.position.set(ox, WATER_Y, 0); mesh.renderOrder = 2;
   return mesh;
 }
 
@@ -471,23 +471,27 @@ function cullChunks() {
 }
 
 /* ----------------------------- terrain helpers --------------------------- */
-let heights = null;
+const HF = [];          // height fields: { ox, grid, h }
 function hAt(x, z) {
-  if (!heights) return 0;
-  const u = clamp((x + EXT) / (2 * EXT) * GRID, 0, GRID - 1.001), v = clamp((-z + EXT) / (2 * EXT) * GRID, 0, GRID - 1.001);
-  const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, W = GRID + 1;
-  const a = heights[j * W + i], b = heights[j * W + i + 1], c = heights[(j + 1) * W + i], d = heights[(j + 1) * W + i + 1];
+  const F = HF.length > 1 && x > 200 ? HF[1] : HF[0];
+  if (!F) return 0;
+  const G2 = F.grid, W = G2 + 1, lx = x - F.ox;
+  const u = clamp((lx + EXT) / (2 * EXT) * G2, 0, G2 - 1.001), v = clamp((-z + EXT) / (2 * EXT) * G2, 0, G2 - 1.001);
+  const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, h = F.h;
+  const a = h[j * W + i], b = h[j * W + i + 1], c = h[(j + 1) * W + i], d = h[(j + 1) * W + i + 1];
   return lerp(lerp(a, b, fu), lerp(c, d, fu), fv);
 }
-function buildHeightTexture(terrainMesh) {
-  const pos = terrainMesh.geometry.attributes.position, W = GRID + 1;
-  heights = new Float32Array(W * W).fill(-2);
+function buildHeightTexture(terrainMesh, ox = 0) {
+  const pos = terrainMesh.geometry.attributes.position;
+  const grid = Math.round(Math.sqrt(pos.count)) - 1, W = grid + 1;
+  const h = new Float32Array(W * W).fill(-2);
   for (let i = 0; i < pos.count; i++) {
-    const ix = Math.round((pos.getX(i) + EXT) / (2 * EXT) * GRID), iy = Math.round((-pos.getZ(i) + EXT) / (2 * EXT) * GRID);
-    if (ix >= 0 && ix < W && iy >= 0 && iy < W) heights[iy * W + ix] = pos.getY(i);
+    const ix = Math.round((pos.getX(i) - ox + EXT) / (2 * EXT) * grid), iy = Math.round((-pos.getZ(i) + EXT) / (2 * EXT) * grid);
+    if (ix >= 0 && ix < W && iy >= 0 && iy < W) h[iy * W + ix] = pos.getY(i);
   }
+  HF.push({ ox, grid, h });
   const half = new Uint16Array(W * W);
-  for (let i = 0; i < half.length; i++) half[i] = THREE.DataUtils.toHalfFloat(heights[i]);
+  for (let i = 0; i < half.length; i++) half[i] = THREE.DataUtils.toHalfFloat(h[i]);
   const tex = new THREE.DataTexture(half, W, W, THREE.RedFormat, THREE.HalfFloatType);
   tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.needsUpdate = true;
   return tex;
@@ -608,7 +612,7 @@ scene.add(fireflies);
 let petals = null;
 function makePetals(cx, cz) {
   petals = makePoints(650, { x: cx, y: 0, z: cz, w: 34, h: 0, d: 34 },
-    /* glsl */`attribute vec4 aSeed; uniform float uTime, uScale; varying float vA; varying float vR; varying vec3 vC;
+    /* glsl */`attribute vec4 aSeed; uniform float uTime, uScale, uLeaf; varying float vA; varying float vR; varying vec3 vC;
       void main(){
         float life = fract(aSeed.w + uTime*(0.018 + aSeed.z*0.012));
         vec3 p = position;
@@ -617,7 +621,7 @@ function makePetals(cx, cz) {
         p.z += cos(life*11.0 + aSeed.x*20.0)*0.9 - life*2.0;
         vA = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.9, 1.0, life)) * step(-0.15, p.y);
         vR = life*20.0 + aSeed.x*6.28;
-        vC = mix(vec3(1.0,0.72,0.82), vec3(1.0,0.9,0.94), aSeed.y);
+        vC = mix(mix(vec3(1.0,0.72,0.82), vec3(1.0,0.9,0.94), aSeed.y), mix(vec3(0.85,0.25,0.08), vec3(1.0,0.72,0.18), aSeed.y), uLeaf);
         vec4 mv = viewMatrix*vec4(p,1.0);
         gl_PointSize = clamp((0.075 + 0.06*aSeed.y) * uScale / -mv.z, 1.0, 26.0);
         gl_Position = projectionMatrix*mv;
@@ -660,7 +664,65 @@ function makeMist() {
 
 /* ----------------------------- load the scene ---------------------------- */
 const state = { started: false, last: performance.now(), shot: false, frame: 0 };
-let forceShadow = 3, shopMesh = null, shopAnchor = null;
+let forceShadow = 3, shopMesh = null, shopAnchor = null, shopMesh2 = null, falls = null;
+const OX2 = 400;
+const wayGlowMats = [];
+const AREA = { pond: { cx: 0 }, maple: { cx: OX2 } };
+let area = 'pond';
+/* Animated waterfall: streaks that run down the cascade, foam where it is steep, a soft edge. */
+function waterfallMat() {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uTime: U.uTime, uLight: U.uLight, uFogColor: U.uFogColor, uFogD: U.uFogD },
+    vertexShader: 'varying vec2 vUv; varying vec3 vWP; void main(){ vUv = uv; vec4 w = modelMatrix*vec4(position,1.0); vWP = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }',
+    fragmentShader: `varying vec2 vUv; varying vec3 vWP; uniform float uTime, uLight, uFogD; uniform vec3 uFogColor;
+      ${NOISE}
+      void main(){
+        float flow = vUv.y * 6.0 - uTime * 1.6;
+        float streak = vnoise(vec2(vUv.x * 18.0, flow)) * 0.6 + vnoise(vec2(vUv.x * 40.0, flow * 2.0)) * 0.4;
+        float foam = smoothstep(0.55, 0.85, streak) + smoothstep(0.8, 1.0, vUv.y) * 0.6;
+        vec3 col = mix(vec3(0.42, 0.62, 0.66), vec3(0.95, 0.98, 1.0), clamp(foam, 0.0, 1.0)) * (0.3 + 0.8 * uLight);
+        float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+        float a = (0.55 + 0.4 * streak) * edge;
+        col = mix(col, uFogColor, 1.0 - exp(-pow(length(cameraPosition - vWP) * uFogD, 2.0)));
+        gl_FragColor = vec4(col, a);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+function spawnFor(a) {
+  if (a === 'pond') { const th = -Math.PI / 2 - 0.35, R = 8.2 + 1.6 * Math.sin(2 * th + 0.6) + 0.9 * Math.sin(3 * th + 2.0) + 0.5 * Math.sin(5 * th + 1.0); return [R * Math.cos(th) + Math.cos(th) * 1.2, -R * Math.sin(th) - Math.sin(th) * 1.2]; }
+  const w = AREA.maple.way.position, cx = OX2;
+  const d = new THREE.Vector2(cx - w.x, -w.z).normalize();
+  return [w.x + d.x * 1.8, w.z + d.y * 1.8];
+}
+function enterArea(a, initial = false) {
+  area = a; G.state.area = a; G.saveQuiet();
+  AREA.pond.group.visible = a === 'pond'; AREA.maple.group.visible = a === 'maple';
+  const A = AREA[a];
+  shopAnchor = A.shop; shopMesh = A.shopMesh;
+  if (shopAnchor) { shopLight.position.setFromMatrixPosition(shopAnchor.matrixWorld).add(new THREE.Vector3(0, 0.4, 0)); }
+  lanternLight.visible = a === 'pond';
+  fireflies.position.x = A.cx; mistGroup.position.x = A.cx;
+  if (petals) { petals.position.set(a === 'maple' ? OX2 - 11.8 : 0, 0, a === 'maple' ? 4.2 : 0); petalU.uLeaf.value = a === 'maple' ? 1 : 0; }
+  $('shoplabel').querySelector('span:not([data-i])').textContent = a === 'maple' ? 'Outfitters' : 'Tackle Shop';
+  const [x, z] = spawnFor(a);
+  player.teleport(x, z); player.lookAt(A.cx, 0, 0);
+  if (!initial) player.apply();
+  forceShadow = 3;
+}
+function travel(to) {
+  if (to === area) { toast(`You are already at ${G.AREAS[to].name}`); return; }
+  if (G.level() < G.AREAS[to].lvl) { toast(`${icon('lock', 16)} Reach level ${G.AREAS[to].lvl} to travel to ${G.AREAS[to].name}`); return; }
+  if (fishing && fishing.busy()) { toast('Finish reeling in first'); return; }
+  const fade = $('fade');
+  fade.classList.add('on'); audio.sfx('up');
+  setTimeout(() => {
+    enterArea(to);
+    toast(`${icon('map', 16)} Welcome to ${G.AREAS[to].name}`, 'good');
+    setTimeout(() => fade.classList.remove('on'), 120);
+  }, 650);
+}
 const grassSets = [];
 
 async function loadGLB() {
@@ -675,9 +737,9 @@ function setup(gltf) {
   const set = (n, mat, cast = false, recv = true) => { const o = by(n); if (!o) return null; o.material = mat; o.castShadow = cast; o.receiveShadow = recv; return o; };
 
   const terrain = set('Terrain', patchTerrain(lam({ color: new THREE.Color(1.32, 1.3, 1.2) })));
-  U.uHeight.value = buildHeightTexture(terrain);
+  const htex1 = buildHeightTexture(terrain, 0);
   const old = by('Water'); if (old) old.visible = false;
-  const waterMesh = makeWater(); scene.add(waterMesh); hideInRefl.push(waterMesh);
+  const waterMesh = makeWater(0, htex1); scene.add(waterMesh); hideInRefl.push(waterMesh);
 
   // plants: flatten normals up, then split into chunks that are culled by distance
   const plant = (name, k, mat, cell, dist) => { const o = by(name); flattenNormalsUp(o.geometry, k); o.material = mat; o.receiveShadow = true; return chunkify(o, cell, dist); };
@@ -716,9 +778,11 @@ function setup(gltf) {
   weather.setMode(G.state.weather);
   let colliders = [];
   try { colliders = JSON.parse((by('PondMeta') && by('PondMeta').userData.colliders) || '[]').map(([x, y, r]) => [x, -y, r]); } catch (e) { /* none */ }
-  player = initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen: () => !$('modal').hidden, getSens: () => +G.state.sens || 1 });
+  let docks = [];
+  try { docks = JSON.parse((by('PondMeta') && by('PondMeta').userData.docks) || '[]'); } catch (e) { /* none */ }
+  player = initPlayer({ camera, canvas, hAt, WATER_Y, colliders, docks, isUIOpen: () => !$('modal').hidden, getSens: () => +G.state.sens || 1 });
   creatures = initCreatures({ root, scene, camera, addRipple, hAt, WATER_Y, audio, getPlayer: () => player, colliders });
-  fishing = initFishing({ scene, camera, player, renderer, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
+  fishing = initFishing({ scene, camera, player, renderer, getArea: () => area, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
 
   initUI({
     audio,
@@ -727,17 +791,60 @@ function setup(gltf) {
       onReplay: () => fishing.replayTutorial(),
       onSetting: (k, v) => { if (k === 'quality') setQualityMode(v); else if (k === 'weather') weather.setMode(v); },
       onOpen: () => player && player.exitLock(),
+      onTravel: (to) => travel(to),
     },
   });
   fishing.applyGear();
+  G.onChange(() => fishing.applyGear());
 
   hideInRefl.push(fishing.rod, fishing.line);
   window.__pond.boat = boat;
+
+  /* ------------------------------ Maple Hollow ------------------------------ */
+  const terrain2 = set('A2_Terrain', patchTerrain(lam({ color: new THREE.Color(1.3, 1.25, 1.15) })));
+  const water2 = terrain2 ? makeWater(OX2, buildHeightTexture(terrain2, OX2)) : null;
+  if (water2) { scene.add(water2); hideInRefl.push(water2); }
+  const a2 = [];
+  if (by('A2_Grass')) {
+    const g2 = plant('A2_Grass', 0.8, patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.3, 1.25, 1.0) }), { sway: 1, glow: 0.24 }), 12, () => Q.grass);
+    const r2 = plant('A2_Reeds', 0.6, patchSway(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.3, 1.25, 1.05) }), { sway: 1.25, glow: 0.2 }), 10, () => Q.grass * 1.1);
+    const f2 = chunkify(set('A2_Foliage', patchLeaves(lam({ color: new THREE.Color(1.45, 1.35, 1.25) })), true, true), 22, 0);
+    hideInRefl.push(g2.group);
+    a2.push(g2.group, r2.group, f2.group);
+  }
+  set('A2_Leaves', patchMat(lam({ side: THREE.DoubleSide, color: new THREE.Color(1.3, 1.25, 1.2) }), {}), false, true);
+  set('A2_FloatLeaves', lam({ side: THREE.DoubleSide, color: new THREE.Color(1.3, 1.25, 1.2) }));
+  set('A2_Rocks', patchMat(lam({ color: new THREE.Color(1.9, 1.9, 1.85) }), {}), true);
+  set('A2_Trunks', patchMat(lam({ color: new THREE.Color(1.5, 1.5, 1.5) }), { bark: true }), true);
+  set('A2_Dock', patchMat(lam(), { dock: 1 }), true);
+  shopMesh2 = set('A2_Shop', lam({ side: THREE.DoubleSide, color: new THREE.Color(1.45, 1.45, 1.4) }), true);
+  set('A2_ShopGlow', shopGlowMat, false, false);
+  const wf = by('A2_Waterfall');
+  if (wf) { wf.material = waterfallMat(); wf.renderOrder = 3; wf.castShadow = false; hideInRefl.push(wf); falls = wf; wf.geometry.computeBoundingBox(); wf.geometry.boundingBox.getCenter(_fallsAt); }
+  for (const [n, c] of [['Waystone1', 0x7ff0ff], ['A2_Waystone', 0xffb35a]]) {
+    set(n, patchMat(lam({ color: new THREE.Color(1.6, 1.6, 1.55) }), {}), true);
+    const gm = lam({ emissive: new THREE.Color(c), emissiveIntensity: 2.2 }); set(n + 'Glow', gm, false, false); wayGlowMats.push(gm);
+  }
+  AREA.pond.shop = shopAnchor; AREA.pond.shopMesh = shopMesh; AREA.pond.way = by('Waystone1Anchor');
+  AREA.maple.shop = by('A2_ShopAnchor'); AREA.maple.shopMesh = shopMesh2; AREA.maple.way = by('A2_WaystoneAnchor');
+  [AREA.maple.shop, AREA.pond.way, AREA.maple.way].forEach((o) => o && o.updateMatrixWorld());
+
+  // sort everything into one group per area so only the place you are in is drawn
+  const g1 = new THREE.Group(), g2 = new THREE.Group(); g1.name = 'Area_pond'; g2.name = 'Area_maple';
+  scene.add(g1, g2);
+  [...root.children].forEach((o) => { if (o.name === 'PondMeta') return; (o.name.startsWith('A2_') ? g2 : g1).attach(o); });
+  chunkSets.forEach((cs) => { if (!a2.includes(cs.group)) g1.add(cs.group); });
+  a2.forEach((g) => g2.add(g));
+  g1.add(waterMesh, creatures.group); if (water2) g2.add(water2); g2.add(creatures.group2);
+  AREA.pond.group = g1; AREA.maple.group = g2;
+  const start = G.state.area === 'maple' && G.level() >= 10 ? 'maple' : 'pond';
+  enterArea(start, start === 'maple');
 }
 
 /* -------------------------------- animate -------------------------------- */
 const shopLabel = $('shoplabel'), _sp = new THREE.Vector3(), _q = new THREE.Quaternion();
-let nearShop = false;
+let nearShop = false, nearWay = false;
+const wayLabel = $('waylabel'), _wp = new THREE.Vector3(), _fallsAt = new THREE.Vector3();
 const intro = { k: 1, from: new THREE.Vector3(), q0: new THREE.Quaternion() };
 function animate() {
   const now = performance.now(), raw = (now - state.last) / 1000, dt = Math.min(raw, 0.05);
@@ -780,6 +887,21 @@ function animate() {
     shopLabel.style.transform = `translate(-50%,-100%) translate(${(_sp.x * 0.5 + 0.5) * innerWidth}px, ${(-_sp.y * 0.5 + 0.5) * innerHeight}px)`;
   }
 
+  // waystone: glow, prompt and travel
+  const way = AREA[area] && AREA[area].way;
+  if (way && wayLabel && player) {
+    _wp.copy(way.position).add(new THREE.Vector3(0, 1.9, 0));
+    const dist = camera.position.distanceTo(_wp);
+    nearWay = Math.hypot(player.pos.x - way.position.x, player.pos.z - way.position.z) < 3.2;
+    wayLabel.classList.toggle('near', nearWay);
+    _wp.project(camera);
+    const vis = _wp.z < 1 && dist < 26 && Math.abs(_wp.x) < 1.05 && Math.abs(_wp.y) < 1.05 && !document.body.classList.contains('clean');
+    wayLabel.style.opacity = vis ? String(clamp(1.3 - dist / 22, 0.3, 1)) : '0';
+    wayLabel.style.transform = `translate(-50%,-100%) translate(${(_wp.x * 0.5 + 0.5) * innerWidth}px, ${(-_wp.y * 0.5 + 0.5) * innerHeight}px)`;
+  }
+  wayGlowMats.forEach((m, i) => (m.emissiveIntensity = 1.6 + Math.sin(t * 2.2 + i) * 0.7));
+  if (falls) audio.setFalls(area === 'maple' ? clamp(1 - camera.position.distanceTo(_fallsAt) / 30, 0, 1) : 0);
+
   if (state.frame % Math.max(1, Q.every) === 0 || forceShadow > 0) { renderer.shadowMap.needsUpdate = true; if (forceShadow > 0) forceShadow--; }
   if (state.started && Q.refl > 0 && state.frame % Q.reflEvery === 0) renderReflection();
   if (Q.post) composer.render(); else renderer.render(scene, camera);
@@ -806,6 +928,8 @@ function wireToolbar() {
   $('shopBtn').addEventListener('click', () => openPanel('shop'));
   $('journalBtn').addEventListener('click', () => openPanel('journal'));
   $('settingsBtn').addEventListener('click', () => openPanel('settings'));
+  $('travelBtn').addEventListener('click', () => openPanel('travel'));
+  $('waylabel').addEventListener('click', () => openPanel('travel'));
   $('sound').innerHTML = `${icon('soundOff', 18)}<span>Sound off</span>`;
 }
 addEventListener('keydown', (e) => {
@@ -813,7 +937,9 @@ addEventListener('keydown', (e) => {
   if (e.key === 'h' || e.key === 'H') document.body.classList.toggle('clean');
   const idx = ['1', '2', '3', '4'].indexOf(e.key);
   if (idx >= 0) setPreset(Object.keys(PRESETS)[idx]);
+  if (e.code === 'KeyE' && nearWay && $('modal').hidden) { audio.sfx('click'); openPanel('travel'); return; }
   if (e.code === 'KeyE' && nearShop && $('modal').hidden) { audio.sfx('click'); openPanel('shop'); return; }
+  if ((e.key === 't' || e.key === 'T') && $('modal').hidden) openPanel('travel');
   if (e.key === 'r' || e.key === 'R') { const nx = { auto: 'rain', rain: 'clear', clear: 'auto' }[G.state.weather] || 'auto'; G.state.weather = nx; G.commit(); weather && weather.setMode(nx); toast(`Weather: ${nx}`); }
 });
 

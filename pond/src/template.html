@@ -60,7 +60,15 @@
   body.locked #c { cursor:none; }
   #joy { position:fixed; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%; border:2px solid rgba(255,255,255,.35); background:rgba(10,18,15,.25); pointer-events:none; opacity:0; transition:opacity .15s; z-index:3; }
   #joy.on { opacity:1; } #joyKnob { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,236,200,.75); }
-  body.coarse #shoplabel kbd { display:none !important; }
+  body.coarse #shoplabel kbd, body.coarse #waylabel kbd { display:none !important; }
+  #waylabel { position:fixed; left:0; top:0; z-index:2; opacity:0; transition:opacity .3s; display:flex; align-items:center; gap:7px; padding:6px 12px 6px 9px; border-radius:999px; background:rgba(14,40,46,.8); border:1px solid rgba(127,240,255,.55); color:#dffbff; font-size:12.5px; font-weight:600; letter-spacing:.04em; cursor:pointer; white-space:nowrap; will-change:transform; }
+  #waylabel kbd { display:none; font:700 11px/1 system-ui,sans-serif; padding:3px 6px; border-radius:5px; background:#dffbff; color:#0e282e; }
+  #waylabel.near { background:rgba(20,80,90,.92); border-color:#7ff0ff; } #waylabel.near kbd { display:inline-block; }
+  body:not(.coarse) #waylabel.near::after { content:"to travel"; font-weight:500; opacity:.85; }
+  #fade { position:fixed; inset:0; z-index:20; background:#0a1210; opacity:0; pointer-events:none; transition:opacity .6s ease; }
+  #fade.on { opacity:1; }
+  #mini.ready #track { opacity:.75; } #mini.ready #miniTip b { display:inline-block; min-width:1.2em; text-align:center; color:#ffd23f; font-size:22px; }
+  .cards.two-col { grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); } .card .art.wide { height:auto; } .card .art.wide svg { width:100%; height:auto; border-radius:10px; }
   .clock { padding:0 8px 0 10px; font-variant-numeric:tabular-nums; font-weight:700; color:var(--accent); align-self:center; letter-spacing:.04em; }
 
   /* status line, catch bar */
@@ -174,12 +182,14 @@
 <div class="title"><div class="tl"><b>Still Water</b><span id="mood">Golden hour</span></div><div id="hud"></div></div>
 <div class="hint">Click to look around · WASD to walk · Shift to run<br>Space or click: cast, hook, hold to reel · E shop when close<br>J journal · R rain · 1-4 jump the clock · H hides the interface</div>
 <div id="cross" aria-hidden="true"></div>
+<div id="waylabel" role="button" tabindex="0"><span data-i="map" data-s="18"></span><span>Waystone</span><kbd>E</kbd></div>
+<div id="fade" aria-hidden="true"></div>
 <div id="shoplabel" role="button" tabindex="0"><span data-i="shop" data-s="18"></span><span>Tackle Shop</span><kbd>E</kbd></div>
 <div id="toasts" aria-live="polite"></div>
 <div class="bar" role="toolbar" aria-label="Controls">
   <div class="grp"><button id="cast" class="cast"></button><button id="shopBtn"><span data-i="shop" data-s="18"></span><span>Shop</span></button><button id="journalBtn"><span data-i="book" data-s="18"></span><span>Journal</span></button><button id="help" title="How to play" aria-label="How to play"><span data-i="help" data-s="18"></span></button></div>
   <div class="grp" id="timebtns" role="group" aria-label="Time of day"></div>
-  <div class="grp"><button id="sound"></button><button id="shot" title="Save a picture" aria-label="Save a picture"><span data-i="camera" data-s="18"></span></button><button id="hide" title="Hide interface (H)" aria-label="Hide interface"><span data-i="expand" data-s="18"></span></button><button id="settingsBtn" title="Settings" aria-label="Settings"><span data-i="gear" data-s="18"></span></button></div>
+  <div class="grp"><button id="sound"></button><button id="shot" title="Save a picture" aria-label="Save a picture"><span data-i="camera" data-s="18"></span></button><button id="hide" title="Hide interface (H)" aria-label="Hide interface"><span data-i="expand" data-s="18"></span></button><button id="travelBtn" title="Travel (T)" aria-label="Travel"><span data-i="map" data-s="18"></span></button><button id="settingsBtn" title="Settings" aria-label="Settings"><span data-i="gear" data-s="18"></span></button></div>
 </div>
 <div id="status" role="status" aria-live="polite"></div>
 <div id="mini" hidden aria-label="Catch bar: hold to move the white bar right, release to let it slide back">

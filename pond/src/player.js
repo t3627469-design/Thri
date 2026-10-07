@@ -5,7 +5,7 @@ import * as THREE from 'three';
 
 const EYE = 1.62;
 
-export function initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen, getSens }) {
+export function initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen, getSens, docks = [] }) {
   const coarse = matchMedia('(pointer:coarse)').matches;
 
   // dock rectangle (same numbers as build_pond.py) so you can walk out over the water
@@ -14,7 +14,11 @@ export function initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen, 
   const S0 = new THREE.Vector2(R * Math.cos(th), -R * Math.sin(th));
   const U = new THREE.Vector2(-Math.cos(th), Math.sin(th)).normalize();
   const Sd = new THREE.Vector2(-U.y, U.x);
-  const onDock = (x, z) => { const rx = x - S0.x, rz = z - S0.y, s = rx * U.x + rz * U.y, l = rx * Sd.x + rz * Sd.y; return s > -1.6 && s < 5.4 && Math.abs(l) < 0.66; };
+  // docks from Blender: [x, y, ux, uy, sMin, sMax, halfWidth] in Blender coordinates (three z = -y)
+  const DK = docks.length ? docks.map(([x, y, ux, uy, a, b, w]) => ({ p: new THREE.Vector2(x, -y), u: new THREE.Vector2(ux, -uy), a, b, w }))
+    : [{ p: S0.clone(), u: U.clone(), a: -1.6, b: 5.4, w: 0.66 }];
+  const onDock = (x, z) => DK.some((d) => { const rx = x - d.p.x, rz = z - d.p.y, s = rx * d.u.x + rz * d.u.y, l = -rx * d.u.y + rz * d.u.x; return s > d.a && s < d.b && Math.abs(l) < d.w; });
+  const areaCenter = (x) => (x > 200 ? 400 : 0);
 
   const pos = new THREE.Vector3(S0.x - U.x * 1.2, 0, S0.y - U.y * 1.2);   // on the shore at the foot of the dock
   let yaw = Math.atan2(-U.x, -U.y), pitch = -0.12;
@@ -27,7 +31,7 @@ export function initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen, 
 
   function groundAt(x, z) { return onDock(x, z) ? 0.2 : Math.max(hAt(x, z), WATER_Y - 0.3); }
   function blocked(x, z) {
-    if (Math.hypot(x, z) > 36) return true;
+    if (Math.hypot(x - areaCenter(x), z) > 36) return true;
     if (onDock(x, z)) return false;
     if (hAt(x, z) < WATER_Y - 0.28) return true;           // wade only in the shallows
     for (const c of colliders) { const dx = x - c[0], dz = z - c[1]; if (dx * dx + dz * dz < c[2] * c[2]) return true; }

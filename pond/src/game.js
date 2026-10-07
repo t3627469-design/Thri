@@ -51,9 +51,25 @@ const RAW = [
   ['heart', 'Heart of the Pond', 5, [1, 2], [3000, 4000], 0.98, 0.6, ['#ff7ab0', '#ffd6e8', '#ffffff'], 'deep', 'fan', 'glow+scales', 0.03],
 
   // secret: only bites once you have landed 100 fish
+  // ---- Maple Hollow (unlocked at level 10) ----
+  ['shiner', 'Maple Shiner', 0, [0.1, 0.4], [22, 34], 0.32, 0.15, ['#d8743a', '#fbe2c4', '#8a3a1a'], 'slim', 'fork', 'lateral', 40, null, 'maple'],
+  ['leafperch', 'Leaf Perch', 0, [0.3, 1.2], [26, 38], 0.38, 0.12, ['#b88a2a', '#f4dca0', '#6a4a14'], 'trout', 'fork', 'stripes', 34, null, 'maple'],
+  ['acorn', 'Acorn Sunfish', 0, [0.2, 0.8], [24, 36], 0.36, 0.1, ['#8a5a2a', '#e8b860', '#3a2a14'], 'deep', 'fork', 'spots', 30, null, 'maple'],
+  ['copperback', 'Copperback Trout', 1, [0.8, 2.6], [60, 90], 0.52, 0.22, ['#c06a3a', '#f2d2b8', '#5a2a14'], 'trout', 'fork', 'lateral+spots', 14, null, 'maple'],
+  ['lanternchar', 'Lantern Char', 1, [0.6, 2.2], [64, 96], 0.55, 0.25, ['#3a5a6a', '#ff8a3a', '#ffd060'], 'trout', 'fork', 'spots', 12, 'dusk', 'maple'],
+  ['russet', 'Russet Carp', 1, [1.5, 5], [70, 100], 0.5, 0.08, ['#9a4a2a', '#e8b890', '#5a2010'], 'carp', 'fan', 'scales', 12, null, 'maple'],
+  ['ghostsalmon', 'Ghost Salmon', 2, [2, 7], [180, 260], 0.68, 0.3, ['#d8dee4', '#ffffff', '#9aa6b0'], 'trout', 'fork', 'glow', 5, 'night', 'maple'],
+  ['ironjaw', 'Ironjaw Pike', 2, [3, 9], [200, 280], 0.7, 0.35, ['#5a646e', '#c8ced4', '#2a3038'], 'pike', 'fork', 'stripes', 5, null, 'maple'],
+  ['harvestkoi', 'Harvest Koi', 2, [2, 6], [190, 270], 0.66, 0.12, ['#fff0d8', '#ffffff', '#e8742a'], 'carp', 'fan', 'patches', 5, 'day', 'maple'],
+  ['embersturgeon', 'Ember Sturgeon', 3, [10, 24], [420, 560], 0.82, 0.15, ['#5a2a1a', '#d8784a', '#ff9a3a'], 'cat', 'round', 'glow', 1.4, 'dusk', 'maple'],
+  ['twilighteel', 'Twilight Eel', 3, [1, 3], [400, 540], 0.84, 0.5, ['#3a2a6a', '#9a7ad8', '#d8a8ff'], 'eel', 'round', 'glow', 1.2, 'night', 'maple'],
+  ['sovereign', 'Autumn Sovereign', 4, [12, 28], [1200, 1600], 0.92, 0.4, ['#c8302a', '#ffd27a', '#f4a62a'], 'dragon', 'fan', 'scales', 0.35, null, 'maple'],
+  ['phoenix', 'Phoenix Koi', 5, [4, 9], [4000, 5500], 0.97, 0.6, ['#ff5a2a', '#ffe27a', '#ffb02a'], 'dragon', 'fan', 'glow+scales', 0.05, null, 'maple'],
+
   ['keeper', 'The Pond Keeper', 6, [30, 70], [10000, 15000], 0.9, 0.5, ['#121216', '#f4f4f0', '#ffffff'], 'dragon', 'fan', 'glow+scales', 0, 'secret'],
 ];
-export const SPECIES = RAW.map(([id, name, rarity, w, val, diff, dart, c, shape, tail, pat, weight, hint]) => ({ id, name, rarity, w, val, diff, dart, c, shape, tail, pat, weight, hint }));
+export const SPECIES = RAW.map(([id, name, rarity, w, val, diff, dart, c, shape, tail, pat, weight, hint, area]) => ({ id, name, rarity, w, val, diff, dart, c, shape, tail, pat, weight, hint, area: area || 'pond' }));
+export const AREAS = { pond: { id: 'pond', name: 'Still Water', lvl: 1, shop: 'Tackle Shop' }, maple: { id: 'maple', name: 'Maple Hollow', lvl: 10, shop: 'Maple Hollow Outfitters' } };
 export const SPECIES_BY_ID = Object.fromEntries(SPECIES.map((s) => [s.id, s]));
 
 export const MUTATIONS = {
@@ -70,6 +86,12 @@ export const RODS = [
   { id: 'moonwood', name: 'Moonwood Rod', cost: 1600, lvl: 7, ctrl: 0.09, speed: 0.2, luck: 0.3, prog: 0.2, color: '#9fb7ff', note: 'Carved at night. Attracts rarer fish.', glow: true },
   { id: 'koi', name: 'Koi Spirit Rod', cost: 4500, lvl: 10, ctrl: 0.12, speed: 0.26, luck: 0.5, prog: 0.3, color: '#ff7a3a', note: 'Warm to the touch. Fish want to be caught.', glow: true },
   { id: 'dragon', name: 'Jade Dragon Rod', cost: 12000, lvl: 14, ctrl: 0.16, speed: 0.32, luck: 0.8, prog: 0.4, color: '#2fd6a1', note: 'The finest rod on the pond.', glow: true },
+  // sold at Maple Hollow
+  { id: 'maple', name: 'Maple Rod', cost: 8000, lvl: 10, ctrl: 0.14, speed: 0.3, luck: 0.7, prog: 0.36, color: '#c8502a', note: 'Red maple, light and lively.', area: 'maple' },
+  { id: 'emberoak', name: 'Ember Oak Rod', cost: 18000, lvl: 12, ctrl: 0.17, speed: 0.34, luck: 0.9, prog: 0.44, color: '#ff7a2a', note: 'Charred oak that still glows inside.', glow: true, area: 'maple' },
+  { id: 'aurora', name: 'Aurora Rod', cost: 32000, lvl: 15, ctrl: 0.19, speed: 0.38, luck: 1.1, prog: 0.5, color: '#5fd6c0', note: 'Shimmers like the northern lights.', glow: true, area: 'maple' },
+  { id: 'celestial', name: 'Celestial Rod', cost: 55000, lvl: 18, ctrl: 0.22, speed: 0.42, luck: 1.35, prog: 0.58, color: '#3a4ad8', note: 'A night sky you can hold.', glow: true, area: 'maple' },
+  { id: 'leviathan', name: 'Leviathan Rod', cost: 90000, lvl: 22, ctrl: 0.25, speed: 0.46, luck: 1.6, prog: 0.66, color: '#1f8a7a', note: 'Scaled like the old sea beasts.', glow: true, area: 'maple' },
 ];
 export const BAITS = [
   { id: 'worm', name: 'Garden Worm', pack: 10, cost: 25, wait: 0.85, luck: 0, note: 'Bites come 15% sooner.' },
@@ -90,7 +112,7 @@ export const BAGS = [{ cap: 20, cost: 0 }, { cap: 35, cost: 200 }, { cap: 55, co
 
 const KEY = 'stillwater.fishing.v2', OLD = 'stillwater.fishing.v1';
 const blank = () => ({ v: 2, coins: 0, xp: 0, bag: [], bagLv: 0, rods: ['bamboo'], rod: 'bamboo', floats: ['red'], float: 'red', baits: {}, bait: null,
-  caught: {}, stats: { casts: 0, fish: 0, earned: 0 }, tutorial: false, quality: 'auto', weather: 'auto', volume: 0.9, dayLen: '12', paused: false, clock: 0.64, sens: 1 });
+  caught: {}, stats: { casts: 0, fish: 0, earned: 0 }, tutorial: false, quality: 'auto', weather: 'auto', volume: 0.9, dayLen: '12', paused: false, clock: 0.64, sens: 1, area: 'pond' });
 
 function load() {
   let s = blank();
@@ -152,7 +174,7 @@ export function recordCatch(sp, kg, mut, value) {
 /* ------------------------------- shopping ------------------------------- */
 export function sellFish(i) { const f = state.bag[i]; if (!f) return 0; state.bag.splice(i, 1); addCoins(f.val); return f.val; }
 export function sellAll() { const t = state.bag.reduce((a, f) => a + f.val, 0); state.bag = []; addCoins(t); return t; }
-export function canBuyRod(r) { return !state.rods.includes(r.id) && state.coins >= r.cost && level() >= r.lvl; }
+export function canBuyRod(r) { return !state.rods.includes(r.id) && state.coins >= r.cost && level() >= r.lvl && (r.area || 'pond') === (state.area || 'pond'); }
 export function buyRod(r) { if (!canBuyRod(r)) return false; state.coins -= r.cost; state.rods.push(r.id); state.rod = r.id; commit(); return true; }
 export function equipRod(id) { if (state.rods.includes(id)) { state.rod = id; commit(); } }
 export function buyBait(b) { if (state.coins < b.cost) return false; state.coins -= b.cost; state.baits[b.id] = (state.baits[b.id] || 0) + b.pack; if (!state.bait) state.bait = b.id; commit(); return true; }

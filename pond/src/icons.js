@@ -27,6 +27,7 @@ const P = {
   cloud: '<path d="M7 18a4 4 0 0 1-.4-8 5.4 5.4 0 0 1 10.4 1.4 3.3 3.3 0 0 1 .4 6.6z"/>',
   pause: '<path d="M8.5 5.5v13M15.5 5.5v13"/>',
   play: '<path d="M7.5 5v14l11.5-7z"/>',
+  map: '<path d="M3.5 6.5 9 4l6 2.5 5.5-2.5v13.5L15 20l-6-2.5-5.5 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>',
   check: '<path d="M5 12.8l4.2 4.2L19 7.2"/>',
   hand: '<path d="M9.5 12V5.6a1.6 1.6 0 0 1 3.2 0V11"/><path d="M12.7 10.4a1.6 1.6 0 0 1 3.2 0V12"/><path d="M15.9 11.4a1.5 1.5 0 0 1 3.1 0v4.4a5.4 5.4 0 0 1-5.4 5.4h-1.2a5.4 5.4 0 0 1-4.3-2.2l-2.9-3.9a1.4 1.4 0 0 1 2.2-1.6L9.5 15"/>',
   fish: '<path d="M2.8 12c3-4.2 8.5-5.4 12.4-2.6L21 6.8v10.4l-5.8-2.6C11.3 17.4 5.8 16.2 2.8 12z"/><circle cx="7.4" cy="11" r=".9" fill="currentColor" stroke="none"/>',
@@ -72,6 +73,14 @@ export function baitArt(id) {
     chum: '<path d="M12 22h40l-4 32H16z" fill="#7a8a96"/><path d="M12 22h40" stroke="#4a5560" stroke-width="3"/><path d="M18 22c0-8 28-8 28 0" fill="none" stroke="#4a5560" stroke-width="3"/><circle cx="26" cy="12" r="4" fill="#d98a8a"/><circle cx="38" cy="9" r="3.4" fill="#b8c4c9"/><circle cx="33" cy="15" r="3" fill="#e8a24a"/>',
   };
   return `<svg viewBox="0 0 64 64" aria-hidden="true">${a[id] || a.worm}</svg>`;
+}
+export function areaArt(id) {
+  if (id === 'maple') return `<svg viewBox="0 0 160 90" aria-hidden="true"><rect width="160" height="90" fill="#f2b27a"/><path d="M0 52 40 30l30 16 34-22 56 28v38H0z" fill="#7a5a4a"/><path d="M96 26h10l4 40h-18z" fill="#9fd0d8" opacity=".9"/>
+    <ellipse cx="80" cy="74" rx="56" ry="10" fill="#3a7a8a"/><path d="M0 64c30-6 50 4 80 0s50-8 80 0v26H0z" fill="#a8843a"/>
+    ${[[18, 52, '#d8402a'], [34, 46, '#f0a830'], [128, 50, '#e8742a'], [146, 54, '#c8302a']].map(([x, y, c]) => `<rect x="${x - 1.5}" y="${y}" width="3" height="14" fill="#4a3020"/><circle cx="${x}" cy="${y - 4}" r="10" fill="${c}"/>`).join('')}</svg>`;
+  return `<svg viewBox="0 0 160 90" aria-hidden="true"><rect width="160" height="90" fill="#ffc89a"/><circle cx="118" cy="30" r="12" fill="#fff0c8"/><path d="M0 50c30-12 60-12 90-4s50 2 70-6v50H0z" fill="#6a9a4a"/>
+    <ellipse cx="78" cy="70" rx="52" ry="11" fill="#5aa8a8"/><rect x="66" y="58" width="5" height="16" fill="#7a5030"/><rect x="66" y="58" width="22" height="3" fill="#8a6038"/>
+    ${[[22, 48, '#ffb7d0'], [140, 46, '#3f9a2c'], [40, 52, '#56b03a']].map(([x, y, c]) => `<rect x="${x - 1.5}" y="${y}" width="3" height="14" fill="#4a3020"/><circle cx="${x}" cy="${y - 4}" r="11" fill="${c}"/>`).join('')}</svg>`;
 }
 export function bagArt(level = 0) {
   return `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M14 22h36l3 34H11z" fill="${['#8a6a3a', '#5a7a8c', '#6a5aa8', '#a8782a'][level] || '#8a6a3a'}"/><path d="M14 22h36" stroke="#2a1f16" stroke-width="3"/><path d="M22 22v-3a10 10 0 0 1 20 0v3" fill="none" stroke="#2a1f16" stroke-width="3.2"/><rect x="26" y="34" width="12" height="9" rx="2" fill="#e9d9a8"/><path d="M18 30l-1 22M46 30l1 22" stroke="#fff" stroke-opacity=".18" stroke-width="2"/></svg>`;

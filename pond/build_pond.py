@@ -1147,12 +1147,251 @@ for ob, k in ((terrain, 1.0), (grass, 0.85), (flowers, 0.7), (ferns, 0.6), (reed
     bake_ao(ob, k)
 print("baked AO with", len(AOC), "occluders")
 
+
+# =====================================================================================
+#  AREA 2: Maple Hollow, an autumn lake with a waterfall (built 400 m east of the pond)
+# =====================================================================================
+OX = 400.0
+def shore2(th):
+    return 9.6 + 2.0 * math.sin(2 * th + 1.3) + 1.1 * math.sin(3 * th + 0.4) + 0.6 * math.sin(5 * th + 2.2)
+def pd2(x, y):
+    return math.hypot(x, y) - shore2(math.atan2(y, x))
+def cliffk(x, y):
+    a = math.atan2(math.sin(math.atan2(y, x) - math.pi / 2), math.cos(math.atan2(y, x) - math.pi / 2))
+    return math.exp(-(a / 0.55) ** 2)
+def t2_h(x, y):
+    r = math.hypot(x, y); d = pd2(x, y)
+    nh = noise.fractal(Vector((x * 0.05 + 40, y * 0.05, 2.2)), 1.0, 2.0, 4)
+    micro = noise.noise(Vector((x * 0.4, y * 0.4, 3.3))) * 0.07
+    if d < 0:
+        return 0.1 - 1.9 * smooth(0, 1, min(1.0, -d / 4.0)) + micro * 0.5
+    bank = 0.3 * smooth(0, 4, d)
+    hills = smooth(9, 32, r) * (1.4 + 5.2 * smooth(17, 42, r)) * max(0.12, 0.62 + 0.55 * nh)
+    cliff = 6.2 * smooth(0.4, 3.2, d) * cliffk(x, y) * (1 + 0.15 * noise.noise(Vector((x * 0.6, y * 0.6, 1.0))))
+    return 0.1 + bank + (hills + micro) * smooth(0, 4, d) + cliff
+R2N = shore2(math.pi / 2)
+th_pier2 = -math.pi / 2 + 0.15
+u2 = Vector((-math.cos(th_pier2), -math.sin(th_pier2), 0)); sd2 = Vector((-u2.y, u2.x, 0))
+P2 = Vector((shore2(th_pier2) * math.cos(th_pier2), shore2(th_pier2) * math.sin(th_pier2), 0))
+SHOP2 = P2 + u2 * -4.6 + sd2 * 4.2
+WAY2 = P2 + u2 * -3.4 + sd2 * -3.2
+W = lambda x, y, z=0.0: Vector((OX + x, y, z))         # local -> world
+
+# ---- terrain ----
+C2_G1, C2_G2, C2_G3 = srgb(0x7c8a34), srgb(0xb09a46), srgb(0x5a6a2a)
+LEAFC = [srgb(0xc8502a), srgb(0xe08a2a), srgb(0xd8b03a), srgb(0x9a3a20)]
+def terrain2_color(x, y, h):
+    d = pd2(x, y); r = math.hypot(x, y)
+    n1 = noise.noise(Vector((x * 0.12 + 40, y * 0.12, 1.0)))
+    if h < WATER_Z - 0.05:
+        return mix(srgb(0x3c4a3a), srgb(0x102a33), smooth(WATER_Z, -1.6, h))
+    g = mix(C2_G1, C2_G2, 0.5 + 0.6 * n1)
+    g = mix(g, C2_G3, smooth(0.2, 0.9, noise.noise(Vector((x * 0.6, y * 0.6, 4.0)))) * 0.4)
+    lk = smooth(0.15, 0.55, noise.noise(Vector((x * 0.45, y * 0.45, 7.0))))
+    g = mix(g, LEAFC[int((noise.noise(Vector((x * 1.3, y * 1.3, 2.0))) * 0.5 + 0.5) * 3.99) % 4], lk * 0.6)
+    g = mix(g, srgb(0x7a7068), cliffk(x, y) * smooth(0.8, 2.4, d) * 0.9)
+    g = mix(g, srgb(0x8a9a6a), smooth(24, 44, r) * 0.4)
+    beach = (1 - smooth(0.2, 1.4, d)) * (1 - smooth(0.12, 0.35, h))
+    c = mix(g, mix(C_SAND, srgb(0x8a7a5a), 0.4), beach)
+    return mix(c, C_WET, (1 - smooth(-0.2, 0.2, h)) * 0.8)
+T2 = Builder()
+N2 = 170
+grid2 = []
+for j in range(N2 + 1):
+    row = []
+    for i in range(N2 + 1):
+        x = -EXT + 2 * EXT * i / N2; y = -EXT + 2 * EXT * j / N2
+        h = t2_h(x, y)
+        row.append((x, y, h, T2.vert(W(x, y, h))))
+    grid2.append(row)
+for j in range(N2):
+    for i in range(N2):
+        q = [grid2[j][i], grid2[j][i + 1], grid2[j + 1][i + 1], grid2[j + 1][i]]
+        T2.face([p[3] for p in q], [terrain2_color(p[0], p[1], p[2]) for p in q])
+terrain2 = T2.to_obj("A2_Terrain", MAT["terrain"])
+
+def clear2(x, y, m):
+    return (math.hypot(x - SHOP2.x, y - SHOP2.y) > 3.2 + m and math.hypot(x - WAY2.x, y - WAY2.y) > 1.8 + m
+            and not (-1.6 - m < (Vector((x, y, 0)) - P2).dot(u2) < 4.8 and abs((Vector((x, y, 0)) - P2).dot(sd2)) < 1.2 + m))
+
+# ---- grass (golden), reeds, ground leaves, floating leaves ----
+G2 = Builder(); n2b = 0; tries = 0
+while n2b < 13000 and tries < 300000:
+    tries += 1
+    r = 32 * math.sqrt(rnd()) ** 1.1; th = rnd() * math.tau
+    cx, cy = r * math.cos(th), r * math.sin(th)
+    if pd2(cx, cy) < 0.6 or t2_h(cx, cy) < 0.02 or cliffk(cx, cy) * smooth(0.5, 2, pd2(cx, cy)) > 0.4 or not clear2(cx, cy, 0.3):
+        continue
+    tint0 = jitter(mix(srgb(0x9aa040), srgb(0xc8b052), rnd()), 0.12)
+    hb = uni(0.32, 0.7)
+    for _ in range(random.randint(9, 15)):
+        x, y = cx + random.gauss(0, 0.26), cy + random.gauss(0, 0.26)
+        if pd2(x, y) < 0.45: continue
+        add_blade(G2, W(x, y, t2_h(x, y) - 0.03), hb * uni(0.6, 1.25), uni(0.028, 0.05), rnd() * math.tau, uni(0.1, 0.55), jitter(tint0, 0.12), rnd())
+        n2b += 1
+grass2 = G2.to_obj("A2_Grass", MAT["grass"])
+R2B = Builder()
+for _ in range(90):
+    th = rnd() * math.tau
+    if cliffk(math.cos(th), math.sin(th)) > 0.3 or abs(math.atan2(math.sin(th - th_pier2), math.cos(th - th_pier2))) < 0.35: continue
+    rr = shore2(th) + uni(-1.6, 0.8); cx, cy = rr * math.cos(th), rr * math.sin(th)
+    for _ in range(random.randint(4, 8)):
+        x, y = cx + random.gauss(0, 0.3), cy + random.gauss(0, 0.3); z = t2_h(x, y) - 0.05
+        if z > 0.4 or z < -1.0: continue
+        add_blade(R2B, W(x, y, z), uni(0.9, 1.6), 0.042, rnd() * math.tau, uni(0.04, 0.2), jitter(mix(srgb(0x8a8a3a), srgb(0xb8a050), rnd()), 0.1), rnd(), taper=0.8)
+reeds2 = R2B.to_obj("A2_Reeds", MAT["plant"])
+def leaf(B, c, s, yaw, col, z_up=0.0):
+    pts = [(0, -1.0), (0.55, -0.35), (0.42, 0.45), (0, 1.0), (-0.42, 0.45), (-0.55, -0.35)]
+    vs = [B.vert(Vector(c) + rotz(Vector((px * s, py * s, z_up * (abs(px) * 0.5))), yaw)) for px, py in pts]
+    ctr = B.vert(Vector(c) + Vector((0, 0, 0.004)))
+    for i in range(len(vs)):
+        B.face([ctr, vs[i], vs[(i + 1) % len(vs)]], [mix(col, srgb(0x5a2a10), 0.25), col, col], smooth_=True)
+LV = Builder()
+TREES2 = []
+for _ in range(2000):
+    r = uni(3, 34); th = rnd() * math.tau; x, y = r * math.cos(th), r * math.sin(th)
+    if pd2(x, y) < 0.4 or t2_h(x, y) < 0.0: continue
+    if noise.noise(Vector((x * 0.3, y * 0.3, 9.0))) < -0.15 and rnd() < 0.7: continue
+    leaf(LV, W(x, y, t2_h(x, y) + 0.015), uni(0.05, 0.09), rnd() * math.tau, jitter(random.choice(LEAFC), 0.15))
+groundleaves = LV.to_obj("A2_Leaves", MAT["plant"])
+FL = Builder()
+for _ in range(80):
+    th = rnd() * math.tau; rr = shore2(th) * uni(0.2, 0.95); x, y = rr * math.cos(th), rr * math.sin(th)
+    leaf(FL, W(x, y, WATER_Z + 0.012), uni(0.07, 0.12), rnd() * math.tau, jitter(random.choice(LEAFC), 0.12), z_up=0.25)
+floatleaves = FL.to_obj("A2_FloatLeaves", MAT["plant"])
+
+# ---- trees: maples, golden birches, a few pines ----
+TR2, LF2 = Builder(), Builder()
+def tree2(x, y, kind, s):
+    z = t2_h(x, y) - 0.1
+    lean = Vector((uni(-0.3, 0.3), uni(-0.3, 0.3), 0))
+    h = {"maple": 4.4, "birch": 5.2, "pine": 7.0}[kind] * s
+    p0 = W(x, y, z); pm = p0 + Vector((0, 0, h * 0.55)) + lean * h * 0.25; p1 = p0 + Vector((0, 0, h)) + lean * h * 0.5
+    c0, c1 = (srgb(0xd9d4c4), srgb(0xb7b0a0)) if kind == "birch" else (srgb(0x3e2a1c), srgb(0x5a3e28))
+    rw = 0.33 * s
+    COLL.append((OX + x, y, rw * 1.25 + 0.2)); AOC.append((OX + x, y, (1.6 if kind == "pine" else 2.6) * s, 0.42))
+    add_tube(TR2, p0 - Vector((0, 0, 0.3)), pm, rw * 1.2, rw * 0.8, 8, c0, c1)
+    add_tube(TR2, pm, p1, rw * 0.8, rw * 0.45, 8, c1, c1)
+    if kind == "pine":
+        for i in range(6):
+            t = i / 6; cz = z + h * (0.25 + t * 0.7)
+            add_cone(LF2, (OX + x + lean.x * h * 0.5 * t, y + lean.y * h * 0.5 * t, cz), (2.0 - t * 1.6) * s, 1.8 * s, 8, jitter(srgb(0x24502e), 0.1), jitter(srgb(0x3a6a3a), 0.1), rot=rnd())
+        return
+    for _ in range(3):
+        a = rnd() * math.tau; bs = pm + Vector((0, 0, h * 0.1))
+        add_tube(TR2, bs, bs + Vector((math.cos(a) * 1.6 * s, math.sin(a) * 1.6 * s, 1.0 * s)), rw * 0.38, rw * 0.15, 6, c1, c1)
+    cols = [srgb(0xd8402a), srgb(0xe8742a), srgb(0xf0a830), srgb(0xb83020)] if kind == "maple" else [srgb(0xf0c840), srgb(0xe8b030), srgb(0xd8d060)]
+    for _ in range(7):
+        a = rnd() * math.tau; rad = uni(0.4, 1.9) * s
+        c = p1 + Vector((math.cos(a) * rad, math.sin(a) * rad, uni(-0.5, 1.4) * s)); rr = uni(1.3, 2.1) * s
+        base = random.choice(cols)
+        add_ico(LF2, c, (rr, rr, rr * 0.82), 3, lambda pos, n, base=base: mix(jitter(base, 0.08), (min(1, base[0] * 1.35), min(1, base[1] * 1.4), base[2] * 1.2), smooth(0.0, 1.0, n.z) * 0.6), amp=0.3, seed=rnd() * 40)
+for (x, y, k, s) in ((12.5, 3.0, "maple", 1.2), (-12.0, 2.5, "maple", 1.1), (-6.0, -14.0, "birch", 1.0), (8.0, -13.5, "maple", 1.05), (-13.5, -6.0, "maple", 1.0)):
+    tree2(x, y, k, s)
+cnt = 0; tries = 0
+while cnt < 30 and tries < 4000:
+    tries += 1
+    r = uni(26, 44); th = rnd() * math.tau; x, y = r * math.cos(th), r * math.sin(th)
+    if t2_h(x, y) < 0.2: continue
+    tree2(x, y, random.choice(["maple", "maple", "maple", "birch", "pine"]), uni(0.9, 1.6)); cnt += 1
+trunks2 = TR2.to_obj("A2_Trunks", MAT["wood"]); foliage2 = LF2.to_obj("A2_Foliage", MAT["leaf"])
+
+# ---- rocks, cliff boulders, waterfall ----
+RK2 = Builder()
+for _ in range(26):
+    th = rnd() * math.tau; rr = shore2(th) + uni(-1.0, 3.5); x, y = rr * math.cos(th), rr * math.sin(th)
+    if not clear2(x, y, 0.5): continue
+    s = uni(0.3, 0.85) * (1.7 if rnd() < 0.15 else 1)
+    COLL.append((OX + x, y, s * 1.05)); AOC.append((OX + x, y, s * 1.7, 0.32))
+    add_ico(RK2, W(x, y, t2_h(x, y) + s * 0.2), (s * uni(1, 1.5), s * uni(0.9, 1.3), s * uni(0.55, 0.9)), 3, rock_col(jitter(srgb(0x75706a), 0.1), srgb(0x6a7a2a)), amp=0.28, seed=rnd() * 50, rot=rnd() * 6)
+for k in range(16):                                       # boulders flanking the falls
+    sx = (-1 if k % 2 else 1) * uni(1.6, 3.4); yy = R2N + uni(-0.2, 4.0)
+    s = uni(0.7, 1.5)
+    add_ico(RK2, W(sx, yy, t2_h(sx, yy) + s * 0.25), (s * 1.3, s, s * 0.9), 3, rock_col(jitter(srgb(0x6e6a64), 0.1), srgb(0x4f6a2a)), amp=0.3, seed=rnd() * 50, rot=rnd() * 6)
+rocks2 = RK2.to_obj("A2_Rocks", MAT["rock"])
+WF = Builder()
+rows = []
+NR = 14
+for i in range(NR + 1):
+    k = i / NR
+    y = R2N + 3.2 - 3.6 * k
+    z = max(t2_h(0, y) + 0.18, WATER_Z + 0.01) if k > 0.05 else t2_h(0, R2N + 3.2) + 0.15
+    w = 1.0 + 0.5 * k
+    rows.append([WF.vert(W(-w, y, z)), WF.vert(W(0, y + 0.08, z + 0.04)), WF.vert(W(w, y, z))])
+for i in range(NR):
+    for j in range(2):
+        a, b_, c, d = rows[i][j], rows[i][j + 1], rows[i + 1][j + 1], rows[i + 1][j]
+        WF.face([a, b_, c, d], srgb(0xffffff), [(j / 2, i / NR), ((j + 1) / 2, i / NR), ((j + 1) / 2, (i + 1) / NR), (j / 2, (i + 1) / NR)], smooth_=True)
+waterfall = WF.to_obj("A2_Waterfall", MAT["water"])
+
+# ---- pier ----
+DK2 = Builder()
+for i in range(18):
+    s = -1.0 + i * 0.3; c = P2 + u2 * s
+    add_box(DK2, W(c.x, c.y, DECK_Z), (0.26, 1.3, 0.07), jitter(mix(srgb(0x8a5a32), srgb(0x6a4226), rnd()), 0.12), rot=math.atan2(u2.y, u2.x))
+for s in (-0.6, 1.6, 3.8):
+    for off in (-0.58, 0.58):
+        c = P2 + u2 * s + sd2 * off
+        add_box(DK2, W(c.x, c.y, DECK_Z - 0.5), (0.14, 0.14, 1.6), srgb(0x4b3220), rot=math.atan2(u2.y, u2.x))
+dock2 = DK2.to_obj("A2_Dock", MAT["wood"])
+
+# ---- the outfitters' cabin ----
+S2_yaw = math.atan2(u2.y, u2.x)
+gz2 = t2_h(SHOP2.x, SHOP2.y)
+S2B = Vector((OX + SHOP2.x, SHOP2.y, gz2))
+CB, CG = Builder(), Builder()
+def L2(x, y, z): return loc(S2B, S2_yaw, (x, y, z))
+def cbox(x, y, z, sx, sy, sz, col): add_box(CB, L2(x, y, z), (sx, sy, sz), col, rot=S2_yaw)
+logc, logd, roofc = srgb(0x8a5a34), srgb(0x5e3c22), srgb(0x3e5a3a)
+cbox(0, 0, 0.06, 3.4, 3.6, 0.12, logd)
+for k in range(9):                                         # log walls
+    z = 0.2 + k * 0.24; c = jitter(logc, 0.08)
+    cbox(-1.55, 0, z, 0.24, 3.4, 0.22, c); cbox(0, -1.7, z, 3.1, 0.24, 0.22, c); cbox(0, 1.7, z, 3.1, 0.24, 0.22, c)
+cbox(1.35, 0, 0.6, 0.6, 3.2, 1.0, logd); cbox(1.35, 0, 1.13, 0.9, 3.4, 0.1, srgb(0xc9a36a))
+quad(CB, [L2(-1.9, -2.1, 2.9), L2(-1.9, 2.1, 2.9), L2(2.2, 2.1, 2.3), L2(2.2, -2.1, 2.3)], roofc)
+quad(CB, [L2(-1.9, -2.1, 2.8), L2(2.2, -2.1, 2.2), L2(2.2, 2.1, 2.2), L2(-1.9, 2.1, 2.8)], logd)
+for i in range(12):
+    y0 = -2.1 + 4.2 * i / 12; y1 = y0 + 4.2 / 12; c = srgb(0x2f6a3a) if i % 2 == 0 else srgb(0xf2e2b0)
+    quad(CB, [L2(2.2, y0, 2.3), L2(2.2, y1, 2.3), L2(2.9, y1, 1.95), L2(2.9, y0, 1.95)], c)
+for sy in (-1.9, 1.9): add_tube(CB, L2(2.05, sy, 0.12), L2(2.05, sy, 2.35), 0.08, 0.08, 8, logd, logd)
+add_box(CB, L2(2.1, 0, 2.6), (0.06, 1.4, 0.5), srgb(0xc9a36a), rot=S2_yaw)
+leaf(CB, L2(2.14, 0, 2.6), 0.2, 0, srgb(0xd8402a))
+for k in range(7):                                         # rods for sale leaning on the counter
+    add_tube(CB, L2(1.7, -1.4 + k * 0.45, 0.1), L2(1.95, -1.3 + k * 0.45, 2.0), 0.015, 0.008, 5, srgb([0xc8502a, 0x6a3a20, 0x7ad9ff, 0x2a2a6a, 0x2fa38a, 0xd8b03a, 0xe8e8e8][k]), srgb(0x2a2a2a))
+for (bx, by) in ((-0.5, 2.3), (0.4, 2.4)):
+    add_tube(CB, L2(bx, by, 0.12), L2(bx, by, 0.9), 0.33, 0.33, 10, logc, logc, cap=True)
+cabin = CB.to_obj("A2_Shop", MAT["shop"])
+add_box(CG, L2(1.85, 0, 1.95), (0.24, 0.24, 0.3), srgb(0xffc266))
+cabinglow = CG.to_obj("A2_ShopGlow", MAT["glow"])
+a2s = bpy.data.objects.new("A2_ShopAnchor", None); bpy.context.scene.collection.objects.link(a2s); a2s.location = (OX + SHOP2.x, SHOP2.y, gz2 + 1.6)
+COLL.append((OX + SHOP2.x, SHOP2.y, 2.4)); AOC.append((OX + SHOP2.x, SHOP2.y, 3.4, 0.5))
+
+# ---- waystones (one at each pond) ----
+def waystone(name, base, glowcol):
+    WS, WG = Builder(), Builder()
+    add_box(WS, base + Vector((0, 0, 0.1)), (1.3, 1.3, 0.2), srgb(0x6a6660))
+    add_ico(WS, base + Vector((0, 0, 1.2)), (0.38, 0.28, 1.1), 3, lambda p, n: mix(srgb(0x7c7870), srgb(0x5a7a3a), smooth(0.4, 0.9, n.z) * 0.6), amp=0.1, seed=rnd() * 40)
+    for k in range(3):
+        add_box(WG, base + Vector((0, -0.29, 0.75 + k * 0.45)), (0.14 - k * 0.02, 0.04, 0.2), glowcol)
+    add_ico(WG, base + Vector((0, 0, 2.55)), (0.12, 0.12, 0.12), 2, lambda p, n: glowcol)
+    WS.to_obj(name, MAT["rock"]); WG.to_obj(name + "Glow", MAT["glow"])
+    a = bpy.data.objects.new(name + "Anchor", None); bpy.context.scene.collection.objects.link(a); a.location = base + Vector((0, 0, 1.2))
+    COLL.append((base.x, base.y, 0.75)); AOC.append((base.x, base.y, 1.1, 0.3))
+W1 = _S0 - _u * 3.8 + _sdir * 3.4
+waystone("Waystone1", Vector((W1.x, W1.y, terrain_h(W1.x, W1.y))), srgb(0x7ff0ff))
+waystone("A2_Waystone", Vector((OX + WAY2.x, WAY2.y, t2_h(WAY2.x, WAY2.y))), srgb(0xffb35a))
+for ob, k in ((terrain2, 1.0), (grass2, 0.85), (groundleaves, 0.6)):
+    bake_ao(ob, k)
+DOCKS = [[_S0.x, _S0.y, _u.x, _u.y, -1.6, 5.4, 0.66], [OX + P2.x, P2.y, u2.x, u2.y, -1.0, 4.6, 0.62]]
+print("area 2 built:", n2b, "blades")
+
 # ------------------------------------------------------------ scene metadata
 meta = bpy.data.objects.new("PondMeta", None)
 bpy.context.scene.collection.objects.link(meta)
 meta["water_z"] = WATER_Z
 meta["lantern"] = list(LANTERN_POS)
 meta["dock_theta"] = dock_theta
+meta["docks"] = json.dumps([[round(v, 3) for v in d] for d in DOCKS])
 meta["colliders"] = json.dumps([[round(x, 2), round(y, 2), round(r, 2)] for x, y, r in COLL])
 meta["pads"] = json.dumps([[round(x, 3), round(y, 3), round(r, 3)] for x, y, r in pads])
 
@@ -1211,6 +1450,66 @@ bpy.ops.export_scene.gltf(
     export_extras=True,
 )
 print("exported pond.glb", os.path.getsize(os.path.join(HERE, "pond.glb")) // 1024, "KB")
+
+def optimise_glb(path, keep_uv):
+    """Shrink the GLB: vertex colours -> normalised uint16, drop UVs on meshes that never use them."""
+    import struct
+    raw = open(path, "rb").read()
+    jl = struct.unpack("<I", raw[12:16])[0]
+    J = json.loads(raw[20:20 + jl])
+    binoff = 20 + jl + 8
+    B = raw[binoff:]
+    CT = {5126: "<f4", 5123: "<u2", 5125: "<u4", 5121: "u1"}
+    NC = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
+    role = {}
+    for m in J["meshes"]:
+        for pr in m["primitives"]:
+            if "TEXCOORD_0" in pr["attributes"] and m["name"] not in keep_uv:
+                del pr["attributes"]["TEXCOORD_0"]
+            for k, a in pr["attributes"].items():
+                role[a] = k
+            role[pr["indices"]] = "INDEX"
+    out = bytearray(); views = []; accs = []; remap = {}
+    for i, A in enumerate(J["accessors"]):
+        if i not in role:
+            continue
+        V = J["bufferViews"][A["bufferView"]]
+        n = NC[A["type"]]
+        arr = np.frombuffer(B, dtype=CT[A["componentType"]], count=A["count"] * n, offset=V.get("byteOffset", 0) + A.get("byteOffset", 0)).reshape(-1, n)
+        A2 = dict(A); A2.pop("byteOffset", None)
+        if role[i].startswith("COLOR") and A["componentType"] == 5126:
+            if n == 3:
+                arr = np.concatenate([arr, np.ones((arr.shape[0], 1), "f4")], 1); A2["type"] = "VEC4"
+            arr = np.clip(np.round(arr * 65535), 0, 65535).astype("<u2")
+            A2["componentType"] = 5123; A2["normalized"] = True
+            A2.pop("min", None); A2.pop("max", None)
+        stride = None
+        if role[i] == "NORMAL" and A["componentType"] == 5126:
+            q = np.clip(np.round(np.clip(arr, -1, 1) * 127), -127, 127).astype("i1")
+            arr = np.concatenate([q, np.zeros((q.shape[0], 1), "i1")], 1)
+            A2["componentType"] = 5120; A2["normalized"] = True; A2.pop("min", None); A2.pop("max", None)
+            stride = 4
+        data = np.ascontiguousarray(arr).tobytes()
+        while len(out) % 4: out.append(0)
+        views.append({"buffer": 0, "byteOffset": len(out), "byteLength": len(data), **({"target": V["target"]} if "target" in V else {}), **({"byteStride": stride} if stride else {})})
+        out += data
+        A2["bufferView"] = len(views) - 1
+        remap[i] = len(accs); accs.append(A2)
+    for m in J["meshes"]:
+        for pr in m["primitives"]:
+            pr["attributes"] = {k: remap[a] for k, a in pr["attributes"].items()}
+            pr["indices"] = remap[pr["indices"]]
+    J["accessors"] = accs; J["bufferViews"] = views
+    J["extensionsUsed"] = sorted(set(J.get("extensionsUsed", [])) | {"KHR_mesh_quantization"})
+    J["extensionsRequired"] = sorted(set(J.get("extensionsRequired", [])) | {"KHR_mesh_quantization"})
+    J["buffers"] = [{"byteLength": len(out)}]
+    js = json.dumps(J, separators=(",", ":")).encode()
+    while len(js) % 4: js += b" "
+    while len(out) % 4: out.append(0)
+    glb = struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(out)) + struct.pack("<II", len(js), 0x4E4F534A) + js + struct.pack("<II", len(out), 0x004E4942) + bytes(out)
+    open(path, "wb").write(glb)
+optimise_glb(os.path.join(HERE, "pond.glb"), {"Grass", "Reeds", "Flowers", "Ferns", "A2_Grass", "A2_Reeds", "A2_Waterfall"})
+print("optimised pond.glb", os.path.getsize(os.path.join(HERE, "pond.glb")) // 1024, "KB")
 
 if RENDER:
     scene.render.engine = "CYCLES"

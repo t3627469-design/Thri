@@ -9,6 +9,10 @@ export class Ambience {
       this.cricket.gain.setTargetAtTime(0.018 * n * (1 - this.rain * 0.6), this.ctx.currentTime, 1.5);
     }
   }
+  setFalls(a) {
+    this.fallsAmt = a;
+    if (this.ctx && this.on && this.fallsGain) this.fallsGain.gain.setTargetAtTime(0.22 * a * a, this.ctx.currentTime, 0.5);
+  }
   setRain(a) {
     this.rain = a;
     if (this.ctx && this.on) this.rainGain.gain.setTargetAtTime(0.16 * a, this.ctx.currentTime, 1.2);
@@ -43,6 +47,11 @@ export class Ambience {
     const rlp = c.createBiquadFilter(); rlp.type = 'lowpass'; rlp.frequency.value = 7500;
     this.rainGain = c.createGain(); this.rainGain.gain.value = 0;
     rn.connect(rhp); rhp.connect(rlp); rlp.connect(this.rainGain); this.rainGain.connect(this.master); rn.start();
+    // waterfall: a low rushing roar that fades in as you get close
+    const fl = this.noise(5, true), flp = c.createBiquadFilter(); flp.type = 'lowpass'; flp.frequency.value = 900;
+    const fhp = c.createBiquadFilter(); fhp.type = 'highpass'; fhp.frequency.value = 120;
+    this.fallsGain = c.createGain(); this.fallsGain.gain.value = 0;
+    fl.connect(fhp); fhp.connect(flp); flp.connect(this.fallsGain); this.fallsGain.connect(this.master); fl.start();
     // crickets
     this.cricket = c.createGain(); this.cricket.gain.value = 0;
     const co = c.createOscillator(); co.frequency.value = 4300;

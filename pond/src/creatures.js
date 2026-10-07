@@ -10,6 +10,8 @@ const angDiff = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if
 export function initCreatures(ctx) {
   const { root, scene, camera, addRipple, hAt, WATER_Y, audio, getPlayer, colliders = [] } = ctx;
   const by = (n) => root.getObjectByName(n);
+  const group = new THREE.Group(); scene.add(group);          // area 1 wildlife
+  const group2 = new THREE.Group(); scene.add(group2);        // area 2 wildlife (Maple Hollow)
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   root.traverse((o) => { if (o.isMesh && /^(Duck|Koi|Bfly|Frog|Dfly|Heron|Rabbit)/.test(o.name)) { o.material = mat; o.castShadow = /^(Duck|Heron|Rabbit)/.test(o.name); } });
   const U_T = { value: 0 };
@@ -120,16 +122,25 @@ export function initCreatures(ctx) {
     const s = pick((x, z) => koiOk(x, z), 0, 5) || new THREE.Vector2(0, 0);
     koi.push({ o, a: makeAgent(s.x, s.y, koiOk, rand(0.22, 0.4), 1.2), depth: rand(0.18, 0.34), rise: rand(12, 40), leap: rand(30, 90), jump: null });
   }
+  // a few fish in Maple Hollow's lake (clones of the koi models)
+  const OX2 = 400;
+  [2, 4, 5, 0].forEach((ki) => {
+    const src = by('Koi_' + ki); if (!src) return;
+    const o = new THREE.Mesh(src.geometry, koiMat); o.scale.setScalar(1.2); group2.add(o);
+    let s = null; for (let i = 0; i < 60 && !s; i++) { const a = Math.random() * TAU, r = Math.random() * 6, x = OX2 + Math.cos(a) * r, z = Math.sin(a) * r; if (koiOk(x, z)) s = new THREE.Vector2(x, z); }
+    s = s || new THREE.Vector2(OX2, 0);
+    koi.push({ o, a: makeAgent(s.x, s.y, koiOk, rand(0.22, 0.4), 1.2), depth: rand(0.2, 0.4), rise: rand(12, 40), leap: rand(30, 90), jump: null, cx: OX2 });
+  });
   function koiUpdate(dt, t) {
     koi.forEach((k) => {
-      if (atTarget(k.a, 0.5)) k.a.target = pick(koiOk, 0, 6.5);
+      if (atTarget(k.a, 0.5)) { const q = pick((x, z) => koiOk(x + (k.cx || 0), z), 0, 6.5); k.a.target = q ? q.add(new THREE.Vector2(k.cx || 0, 0)) : null; }
       k.rise -= dt; k.leap -= dt;
       if (k.jump) {
         k.jump.t += dt / 0.95;
         const q = Math.min(1, k.jump.t);
         k.o.position.set(k.a.p.x + Math.sin(k.a.h) * q * 1.1, WATER_Y + Math.sin(Math.PI * q) * 0.7 - 0.05, k.a.p.y + Math.cos(k.a.h) * q * 1.1);
         k.o.rotation.set(-Math.cos(Math.PI * q) * 0.9, k.a.h, 0, 'YXZ');
-        if (q >= 1) { addRipple(k.o.position.x, k.o.position.z, 1.4); k.a.p.set(k.o.position.x, k.o.position.z); k.jump = null; if (!koiOk(k.a.p.x, k.a.p.y)) k.a.p.set(0, 0); }
+        if (q >= 1) { addRipple(k.o.position.x, k.o.position.z, 1.4); k.a.p.set(k.o.position.x, k.o.position.z); k.jump = null; if (!koiOk(k.a.p.x, k.a.p.y)) k.a.p.set(k.cx || 0, 0); }
         return;
       }
       if (k.leap <= 0 && koiOk(k.a.p.x + Math.sin(k.a.h) * 1.2, k.a.p.y + Math.cos(k.a.h) * 1.2)) {
@@ -157,7 +168,7 @@ export function initCreatures(ctx) {
     const wl = new THREE.Mesh(ws.geometry, mat), wr = new THREE.Mesh(ws.geometry, mat);
     wr.scale.x = -1;
     g.add(body, wl, wr); g.scale.setScalar(1.35);
-    scene.add(g);
+    group.add(g);
     const s = pick(land, 6, 24) || new THREE.Vector2(10, 10);
     bflies.push({ g, wl, wr, p: new THREE.Vector3(s.x, hAt(s.x, s.y) + 1, s.y), tgt: null, perch: 0, ph: Math.random() * 9, fl: rand(14, 20), h: 0 });
   }
@@ -204,7 +215,7 @@ export function initCreatures(ctx) {
     g.scale.setScalar(1.05);
     let pad; do { pad = bigPads[(Math.random() * bigPads.length) | 0]; } while (frogs.some((f) => f.pad === pad));
     g.position.set(pad.x, WATER_Y + 0.045, pad.z); g.rotation.y = Math.random() * TAU;
-    scene.add(g);
+    group.add(g);
     frogs.push({ g, m, pad, next: rand(1, 6), hop: null, ph: Math.random() * 6 });
   }
   function frogUpdate(f, dt, t) {
@@ -248,7 +259,7 @@ export function initCreatures(ctx) {
     g.scale.setScalar(1.6);
     const s = pick((x, z) => hAt(x, z) < WATER_Y, 2, 7) || new THREE.Vector2(0, 0);
     const pos = new THREE.Vector3(s.x, WATER_Y + 1, s.y);
-    g.position.copy(pos); scene.add(g);
+    g.position.copy(pos); group.add(g);
     dflies.push({ g, wings, pos, wp: pos.clone(), mode: 'hover', t: rand(0.5, 2), ph: Math.random() * 9, yaw: 0 });
   }
   function dflyUpdate(d, dt, t, show) {
@@ -279,7 +290,7 @@ export function initCreatures(ctx) {
     body.position.y = 0.62; lL.position.set(-0.05, 0.62, 0); lR.position.set(0.05, 0.62, 0);
     [body, lL, lR].forEach((m) => { m.castShadow = true; g.add(m); });
     g.scale.setScalar(1.25);
-    scene.add(g);
+    group.add(g);
     const s = pick(shallow, 5, 11) || new THREE.Vector2(6, 0);
     heron = { g, body, lL, lR, a: makeAgent(s.x, s.y, shallow, 0.35, 1.3), mode: 'stand', t: rand(4, 9), walk: 0 };
     heron.a.target = null;
@@ -318,7 +329,7 @@ export function initCreatures(ctx) {
   for (let i = 0; i < 5 && rabSrc; i++) {
     const s = pick(land, 11, 28); if (!s) continue;
     const g = new THREE.Group(), m = new THREE.Mesh(rabSrc.geometry, mat); m.castShadow = true; g.add(m); g.scale.setScalar(1.1);
-    scene.add(g);
+    group.add(g);
     rabbits.push({ g, m, p: s.clone(), h: Math.random() * TAU, mode: 'idle', t: rand(1, 5), hop: null, hops: 0, flee: false });
   }
   function rabbitUpdate(r, dt, t) {
@@ -356,7 +367,7 @@ export function initCreatures(ctx) {
   for (let i = 0; i < 7; i++) {
     const g = new THREE.Group(); g.add(new THREE.Mesh(bodyGeo, birdMat));
     const wings = [-1, 1].map((sx) => { const inner = new THREE.Group(), outer = new THREE.Group(); inner.scale.x = sx; inner.add(new THREE.Mesh(innerGeo, birdMat)); outer.position.x = 0.6; outer.add(new THREE.Mesh(outerGeo, birdMat)); inner.add(outer); g.add(inner); return { inner, outer, sx }; });
-    g.scale.setScalar(1.6); scene.add(g);
+    g.scale.setScalar(1.6); group.add(g);
     birds.push({ g, wings, r: rand(26, 58), a: Math.random() * TAU, sp: rand(0.04, 0.075) * (Math.random() < 0.5 ? -1 : 1), y: rand(22, 40), ph: Math.random() * 6, glide: 0 });
   }
 
@@ -366,7 +377,7 @@ export function initCreatures(ctx) {
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: 'varying vec2 vUv; uniform float uA; void main(){ float l = pow(vUv.x, 3.0); float w = 1.0 - abs(vUv.y-0.5)*2.0; gl_FragColor = vec4(vec3(0.85,0.92,1.0)*l*w*2.0, l*w*uA); }',
   });
-  const star = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.12), starMat); star.visible = false; star.frustumCulled = false; scene.add(star);
+  const star = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.12), starMat); star.visible = false; star.frustumCulled = false; group.add(star);
   const sstar = { t: 0, life: 0, next: 6, p0: new THREE.Vector3(), v: new THREE.Vector3() };
 
   /* --------------------------------- update ------------------------------- */
@@ -410,5 +421,5 @@ export function initCreatures(ctx) {
       starMat.uniforms.uA.value = Math.sin(Math.PI * Math.min(1, sstar.t / 0.9));
     } else star.visible = false;
   }
-  return { update, debug: { hen, drakeA, koi, heron, rabbits, bflies } };
+  return { update, group, group2, debug: { hen, drakeA, koi, heron, rabbits, bflies } };
 }

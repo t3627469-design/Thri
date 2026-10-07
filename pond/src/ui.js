@@ -1,7 +1,7 @@
-import { icon, rodArt, floatArt, baitArt, bagArt } from './icons.js';
+import { icon, rodArt, floatArt, baitArt, bagArt, areaArt } from './icons.js';
 import { fishArt } from './fishart.js';
 import * as G from './game.js';
-import { RARITY, SPECIES, RODS, BAITS, FLOATS, BAGS, MUTATIONS } from './game.js';
+import { RARITY, SPECIES, RODS, BAITS, FLOATS, BAGS, MUTATIONS, AREAS } from './game.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
@@ -30,7 +30,7 @@ function renderHud() {
 /* --------------------------------- modal --------------------------------- */
 const TABS = {
   shop: [['sell', 'Sell'], ['rods', 'Rods'], ['bait', 'Bait'], ['floats', 'Floats'], ['bag', 'Bag']],
-  journal: [['all', 'All'], ['found', 'Caught'], ['missing', 'Unknown']],
+  journal: [['pond', 'Still Water'], ['maple', 'Maple Hollow']],
 };
 let cur = { panel: null, tab: null };
 
@@ -48,14 +48,29 @@ function renderSell() {
   }).join('');
   return `<div class="sellbar"><span>${bag.length} fish in your bag · worth <b>${fmt(total)}</b></span><button class="primary" data-sellall>Sell everything</button></div><ul class="rows">${rows}</ul>`;
 }
+function rodCard(r) {
+  const own = G.state.rods.includes(r.id), eq = G.state.rod === r.id, lock = G.level() < r.lvl, here = (r.area || 'pond') === (G.state.area || 'pond');
+  const btn = eq ? `<button disabled>Equipped</button>` : own ? `<button data-eqrod="${r.id}">Equip</button>`
+    : !here ? `<button disabled>${icon('map', 15)} Sold at ${AREAS[r.area || 'pond'].name}</button>`
+    : lock ? `<button disabled>${icon('lock', 15)} Level ${r.lvl}</button>`
+    : `<button class="buy" data-buyrod="${r.id}" ${G.state.coins < r.cost ? 'disabled' : ''}>${icon('coin', 16)} ${fmt(r.cost)}</button>`;
+  return `<div class="card ${eq ? 'eq' : ''}"><div class="art">${rodArt(r.color, r.glow)}</div><b>${r.name}</b><span class="meta">${r.note}</span>
+    <div class="stats">${stat('Control', r.ctrl, 0.25)}${stat('Speed', r.speed, 0.46)}${stat('Luck', r.luck, 1.6)}${stat('Power', r.prog, 0.66)}</div>${btn}</div>`;
+}
 function renderRods() {
-  return `<div class="cards">${RODS.map((r) => {
-    const own = G.state.rods.includes(r.id), eq = G.state.rod === r.id, lock = G.level() < r.lvl;
-    const btn = eq ? `<button disabled>Equipped</button>` : own ? `<button data-eqrod="${r.id}">Equip</button>`
-      : lock ? `<button disabled>${icon('lock', 15)} Level ${r.lvl}</button>` : `<button class="buy" data-buyrod="${r.id}" ${G.state.coins < r.cost ? 'disabled' : ''}>${icon('coin', 16)} ${fmt(r.cost)}</button>`;
-    return `<div class="card ${eq ? 'eq' : ''}"><div class="art">${rodArt(r.color, r.glow)}</div><b>${r.name}</b><span class="meta">${r.note}</span>
-      <div class="stats">${stat('Control', r.ctrl, 0.16)}${stat('Speed', r.speed, 0.32)}${stat('Luck', r.luck, 0.8)}${stat('Power', r.prog, 0.4)}</div>${btn}</div>`;
-  }).join('')}</div>`;
+  const here = (r) => (r.area || 'pond') === (G.state.area || 'pond');
+  return `<div class="cards">${RODS.filter(here).concat(RODS.filter((r) => !here(r))).map(rodCard).join('')}</div>`;
+}
+function renderTravel() {
+  const lv = G.level();
+  return `<div class="cards two-col">${Object.values(AREAS).map((A) => {
+    const locked = lv < A.lvl, cur = (G.state.area || 'pond') === A.id;
+    const n = SPECIES.filter((s) => s.area === A.id && s.rarity < 6).length, got = SPECIES.filter((s) => s.area === A.id && G.state.caught[s.id]).length;
+    const btn = cur ? '<button disabled>You are here</button>' : locked ? `<button disabled>${icon('lock', 15)} Reach level ${A.lvl}</button>` : `<button class="primary" data-travel="${A.id}">${icon('map', 16)} Travel</button>`;
+    return `<div class="card ${cur ? 'eq' : ''}"><div class="art wide">${areaArt(A.id)}</div><b>${A.name}</b>
+      <span class="meta">${A.id === 'maple' ? 'An autumn lake under a waterfall. New fish and the strongest rods.' : 'The quiet pond where it all began.'}</span>
+      <span class="own">${got} of ${n} species caught</span>${btn}</div>`;
+  }).join('')}</div><p class="foot">You can also walk to a waystone and press E, or press T anywhere.</p>`;
 }
 function renderBait() {
   return `<div class="cards">${BAITS.map((b) => {
@@ -81,7 +96,7 @@ function renderBag() {
 }
 function renderJournal(tab) {
   const found = SPECIES.filter((s) => G.state.caught[s.id]).length, st = G.state.stats;
-  const list = SPECIES.filter((s) => tab === 'all' || (tab === 'found') === !!G.state.caught[s.id]);
+  const list = SPECIES.filter((s) => s.area === tab);
   const cards = list.map((s) => {
     const c = G.state.caught[s.id], r = RARITY[s.rarity];
     const muts = c ? Object.entries(c.mut).map(([k, v]) => `<em style="color:${MUTATIONS[k].color}">${MUTATIONS[k].label} ×${v}</em>`).join(' ') : '';
@@ -104,18 +119,19 @@ function renderSettings() {
 
 function render() {
   if (!cur.panel) return;
-  const title = { shop: 'Tackle Shop', journal: 'Journal', settings: 'Settings' }[cur.panel];
+  const title = { shop: AREAS[G.state.area || 'pond'].shop, journal: 'Journal', settings: 'Settings', travel: 'Travel' }[cur.panel];
   const tabs = (TABS[cur.panel] || []).map(([id, l]) => `<button class="tab ${cur.tab === id ? 'on' : ''}" data-tab="${id}">${l}</button>`).join('');
   let body = '';
   if (cur.panel === 'shop') body = { sell: renderSell, rods: renderRods, bait: renderBait, floats: renderFloats, bag: renderBag }[cur.tab]();
   else if (cur.panel === 'journal') body = renderJournal(cur.tab);
+  else if (cur.panel === 'travel') body = renderTravel();
   else body = renderSettings();
   const head = cur.panel === 'shop' ? `<span class="wallet">${icon('coin', 18)} <b>${fmt(G.state.coins)}</b> <i>Lv ${G.level()}</i></span>` : '';
   $('mbox').innerHTML = `<header><h2>${title}</h2>${head}<button class="x" data-close aria-label="Close">${icon('close', 20)}</button></header>
     ${tabs ? `<nav class="tabs">${tabs}</nav>` : ''}<div class="mbody">${body}</div>`;
 }
 export function open(panel, tab) {
-  cur = { panel, tab: tab || (TABS[panel] ? TABS[panel][0][0] : null) };
+  cur = { panel, tab: tab || (panel === 'journal' ? (G.state.area || 'pond') : TABS[panel] ? TABS[panel][0][0] : null) };
   $('modal').hidden = false; render(); hooks.onOpen && hooks.onOpen(panel);
 }
 export function close() { cur = { panel: null, tab: null }; $('modal').hidden = true; hooks.onClose && hooks.onClose(); }
@@ -135,6 +151,7 @@ function onClick(e) {
   if (d.buyfloat) { const f = FLOATS.find((x) => x.id === d.buyfloat); if (G.buyFloat(f)) { sfx('buy'); toast(`${f.name} float equipped`, 'good'); hooks.onGear && hooks.onGear(); } return; }
   if (d.eqfloat) { G.equipFloat(d.eqfloat); sfx('click'); hooks.onGear && hooks.onGear(); return; }
   if (d.bagup !== undefined) { if (G.upgradeBag()) { sfx('buy'); toast(`Bag upgraded to ${G.bagCap()} slots`, 'good'); } return; }
+  if (d.travel) { close(); hooks.onTravel && hooks.onTravel(d.travel); return; }
   if (d.replay !== undefined) { close(); hooks.onReplay && hooks.onReplay(); return; }
   if (d.reset !== undefined) { if (t.dataset.sure) { G.resetAll(); close(); toast('Progress erased'); location.reload(); } else { t.dataset.sure = '1'; t.textContent = 'Tap again to confirm'; } return; }
   if (d.v && t.parentElement.dataset.seg) {

@@ -21,7 +21,7 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function shoreR(th) { return 8.2 + 1.6 * Math.sin(2 * th + 0.6) + 0.9 * Math.sin(3 * th + 2.0) + 0.5 * Math.sin(5 * th + 1.0); }
 
 export function initFishing(ctx) {
-  const { scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset, getWeather, renderer } = ctx;
+  const { scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset, getWeather, renderer, getArea = () => 'pond' } = ctx;
   const save = G.state;
 
   /* ------------------- the rod, held in front of the first-person camera ----------- */
@@ -116,7 +116,7 @@ export function initFishing(ctx) {
 
   /* ---------------------------------- UI --------------------------------- */
   const el = {
-    status: $('status'), mini: $('mini'), arrow: $('arrow'), note: $('miniNote'),
+    status: $('status'), mini: $('mini'), tip: $('miniTip'), arrow: $('arrow'), note: $('miniNote'),
     coach: $('coach'), coachTitle: $('coachTitle'), coachBody: $('coachBody'), dots: $('cdots'), skip: $('coachSkip'), next: $('coachNext'),
     track: $('track'), zone: $('zone'), fish: $('fishIcon'), fishFi: null, fill: $('progFill'), card: $('card'), cast: $('cast'),
   };
@@ -172,13 +172,14 @@ export function initFishing(ctx) {
 
   function pickSpecies() {
     // the secret fish: guaranteed on the first bite after 100 catches, very rare after that
-    if (!tut.active && save.stats.fish >= 100) {
+    if (!tut.active && getArea() === 'pond' && save.stats.fish >= 100) {
       if (!save.caught.keeper) return SPECIES_BY_ID.keeper;
       if (Math.random() < 0.008) return SPECIES_BY_ID.keeper;
     }
     const p = getPreset(), rain = getWeather(), b = f.bait;
     const luck = G.luck(b);
-    const pool = SPECIES.map((s) => {
+    const area = getArea();
+    const pool = SPECIES.filter((s) => s.area === area).map((s) => {
       let w = s.weight * Math.pow(1 + luck, s.rarity * 0.7);
       if (s.hint) {
         let k = 1;
@@ -240,12 +241,11 @@ export function initFishing(ctx) {
     player.freeze(true);
     addRipple(f.target.x, f.target.z, 1.3);
     audio.sfx('hook');
+    prepMini();
     setState('hooked');
-    say('Hooked! Get ready...', true);
   }
-  function startMini() {
-    if (tut.active) tutShow(3);
-    hideBang();
+  // the bar is shown right away; it comes alive after the 2 second hook-set
+  function prepMini() {
     const s = f.sp, r = G.rod();
     m.zw = clamp(0.4 - s.diff * 0.16 + r.ctrl + (tut.active ? 0.1 : 0), 0.2, 0.64);
     m.c = 0.5; m.vel = 0; m.fp = 0.5; m.ftarget = 0.5; m.ftimer = 0; m.prog = 0.32; m.hold = false; m.inT = 0; m.tot = 0;
@@ -254,7 +254,17 @@ export function initFishing(ctx) {
     el.fishFi = el.fish.querySelector('.fi');
     el.note.textContent = `+${Math.round(r.prog * 100)}% Progress Speed`;
     el.arrow.textContent = '←';
-    el.mini.hidden = false; el.status.classList.remove('show');
+    el.zone.style.left = ((m.c - m.zw / 2) * 100) + '%';
+    el.fish.style.left = '50%';
+    el.fill.style.width = (m.prog * 100) + '%';
+    el.mini.hidden = false; el.mini.classList.add('ready'); el.status.classList.remove('show');
+    el.tip.innerHTML = `${icon('hand', 22)}Get ready <b id="miniCount">2</b>`;
+  }
+  function startMini() {
+    if (tut.active) tutShow(3);
+    hideBang();
+    el.mini.classList.remove('ready');
+    el.tip.innerHTML = `${icon('hand', 22)}Tap &amp; Hold Anywhere!`;
     setState('mini');
   }
   function press(aim) {
@@ -374,6 +384,8 @@ export function initFishing(ctx) {
         bob.copy(f.target); bob.x += Math.sin(t * 11) * 0.1; bob.z += Math.cos(t * 8.7) * 0.1; bob.y = WATER_Y - 0.05 + Math.abs(Math.sin(t * 13)) * 0.06;
         f.ripT -= dt; if (f.ripT < 0) { f.ripT = 0.3; addRipple(bob.x, bob.z, 0.7); }
         slack = 0.01;
+        const cd = document.getElementById('miniCount'); if (cd) cd.textContent = String(Math.max(1, Math.ceil(2 - f.t)));
+        el.fish.style.left = (50 + Math.sin(t * 5) * 3) + '%';
         if (f.t >= 2.0) startMini();
         break;
       }
