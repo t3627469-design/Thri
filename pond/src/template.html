@@ -138,6 +138,25 @@
   .seg { display:flex; gap:2px; padding:3px; border-radius:999px; background:rgba(255,255,255,.07); } .seg button { padding:6px 12px; font-size:12.5px; }
   input[type=range] { accent-color:#ffd9a0; width:160px; } button.danger { border:1px solid rgba(255,120,110,.6); color:#ffb4aa; }
 
+
+  /* the "!" when a fish is on, coloured by rarity (own SVG glyph) */
+  #bang { position:fixed; left:50%; top:40%; z-index:4; pointer-events:none; opacity:0; transform:translate(-50%,-100%) scale(.4); --bf:#ff3b30; --bs:#3a0a08; }
+  #bang svg { display:block; width:clamp(44px,7.5vh,74px); height:auto; overflow:visible; filter:drop-shadow(0 6px 10px rgba(0,0,0,.45)); }
+  #bang path, #bang circle { fill:var(--bf); stroke:var(--bs); stroke-width:7; stroke-linejoin:round; paint-order:stroke; }
+  #bang.show { opacity:1; animation:bangPop .45s cubic-bezier(.2,1.6,.4,1) both, bangBob .9s .45s ease-in-out infinite alternate; }
+  @keyframes bangPop { from { transform:translate(-50%,-100%) scale(.2) rotate(-18deg); opacity:0; } to { transform:translate(-50%,-100%) scale(1) rotate(0); opacity:1; } }
+  @keyframes bangBob { from { transform:translate(-50%,-100%) scale(1) rotate(-4deg); } to { transform:translate(-50%,-112%) scale(1.06) rotate(4deg); } }
+  #bang.red { --bf:#ff3b30; --bs:#4a0c08; }
+  #bang.purple { --bf:#c27dff; --bs:#2a1040; }
+  #bang.yellow { --bf:#ffd23f; --bs:#4a3400; } #bang.yellow svg { filter:drop-shadow(0 0 14px rgba(255,210,63,.9)) drop-shadow(0 6px 10px rgba(0,0,0,.4)); }
+  #bang.rainbow { --bf:url(#bangRainbow); --bs:#151515; } #bang.rainbow svg { filter:drop-shadow(0 0 16px rgba(255,255,255,.7)) drop-shadow(0 6px 10px rgba(0,0,0,.4)); }
+  #bang.secret { --bf:#ffffff; --bs:#000000; } #bang.secret path, #bang.secret circle { animation:secretFlick 1s steps(1) infinite; }
+  #bang.secret svg { filter:drop-shadow(0 0 18px rgba(255,255,255,.9)) drop-shadow(0 0 4px #000); }
+  @keyframes secretFlick { 50% { fill:#000; stroke:#fff; } }
+  .rainbow-t { background:linear-gradient(90deg,#ff3b30,#ff9f0a,#ffd60a,#34c759,#32ade6,#5e5ce6,#bf5af2,#ff3b30); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:rainbow 1.6s linear infinite; }
+  @keyframes rainbow { to { background-position:300% 0; } }
+  .secret-t { color:#fff !important; text-shadow:0 0 0 #000, -1px 0 #000, 1px 0 #000, 0 1px #000, 0 -1px #000; letter-spacing:.18em; }
+  @media (prefers-reduced-motion:reduce) { #bang.show, #bang.secret path, #bang.secret circle, .rainbow-t { animation:none; } }
   @media (max-width:1040px) { #mini { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 140px); } #status { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 142px); } }
   @media (max-width:640px) {
     .hint { display:none; } .grp button[data-time] span { display:none; } .title b { font-size:19px; }

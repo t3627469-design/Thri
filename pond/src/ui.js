@@ -43,7 +43,7 @@ function renderSell() {
     const sp = G.SPECIES_BY_ID[f.id], m = MUTATIONS[f.mut];
     return `<li class="row">
       <div class="fa">${fishArt(sp, { mut: f.mut })}</div>
-      <div class="rt"><b>${sp.name}</b><span class="meta" style="color:${RARITY[sp.rarity].color}">${RARITY[sp.rarity].name}${m.label ? ` · <em style="color:${m.color}">${m.label}</em>` : ''} · ${f.kg.toFixed(2)} kg</span></div>
+      <div class="rt"><b>${sp.name}</b><span class="meta" style="color:${RARITY[sp.rarity].color}"><span class="${RARITY[sp.rarity].cls || ''}">${RARITY[sp.rarity].name}</span>${m.label ? ` · <em style="color:${m.color}">${m.label}</em>` : ''} · ${f.kg.toFixed(2)} kg</span></div>
       <button class="buy" data-sell="${i}">${icon('coin', 16)} ${fmt(f.val)}</button></li>`;
   }).join('');
   return `<div class="sellbar"><span>${bag.length} fish in your bag · worth <b>${fmt(total)}</b></span><button class="primary" data-sellall>Sell everything</button></div><ul class="rows">${rows}</ul>`;
@@ -86,8 +86,8 @@ function renderJournal(tab) {
     const c = G.state.caught[s.id], r = RARITY[s.rarity];
     const muts = c ? Object.entries(c.mut).map(([k, v]) => `<em style="color:${MUTATIONS[k].color}">${MUTATIONS[k].label} ×${v}</em>`).join(' ') : '';
     return `<li class="fcard ${c ? '' : 'unk'}" style="--rc:${r.color}"><div class="ficon">${fishArt(s, { unknown: !c })}</div>
-      <b>${c ? s.name : '???'}</b><span class="rar">${r.name}</span>
-      <span class="meta">${c ? `Caught ${c.n} · best ${c.best.toFixed(2)} kg` : (s.hint === 'night' ? 'Bites at night' : s.hint === 'dusk' ? 'Bites at dusk' : s.hint === 'rain' ? 'Bites in the rain' : s.hint === 'day' ? 'Bites by day' : 'Not caught yet')}</span>${muts ? `<span class="meta">${muts}</span>` : ''}</li>`;
+      <b>${c ? s.name : '???'}</b><span class="rar ${r.cls || ''}">${r.name}</span>
+      <span class="meta">${c ? `Caught ${c.n} · best ${c.best.toFixed(2)} kg` : (s.hint === 'secret' ? `Appears after 100 catches (${Math.min(100, st.fish)}/100)` : s.hint === 'night' ? 'Bites at night' : s.hint === 'dusk' ? 'Bites at dusk' : s.hint === 'rain' ? 'Bites in the rain' : s.hint === 'day' ? 'Bites by day' : 'Not caught yet')}</span>${muts ? `<span class="meta">${muts}</span>` : ''}</li>`;
   }).join('');
   return `<div class="jstats"><div><b>${found}</b><span>of ${SPECIES.length} species</span></div><div><b>${fmt(st.fish)}</b><span>fish caught</span></div><div><b>${fmt(st.casts)}</b><span>casts</span></div><div><b>${fmt(st.earned)}</b><span>coins earned</span></div></div><ul class="jgrid">${cards}</ul>`;
 }

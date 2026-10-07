@@ -2,7 +2,8 @@
 
 export const RARITY = [
   { name: 'Common', color: '#b8c4c9' }, { name: 'Uncommon', color: '#7fd36b' }, { name: 'Rare', color: '#58a6ff' },
-  { name: 'Epic', color: '#b987ff' }, { name: 'Legendary', color: '#ffc857' }, { name: 'Mythic', color: '#ff6fae' },
+  { name: 'Epic', color: '#b987ff' }, { name: 'Legendary', color: '#ffc857' }, { name: 'Exotic', color: '#ff6fae', cls: 'rainbow-t' },
+  { name: 'Secret', color: '#ffffff', cls: 'secret-t' },
 ];
 
 // [id, name, rarity, kg[min,max], value[min,max], difficulty, dart, [back, belly, accent], shape, tail, pattern, weight, time/weather hint]
@@ -48,6 +49,9 @@ const RAW = [
 
   ['spirit', 'Spirit Koi', 5, [3, 8], [1500, 2000], 0.96, 0.55, ['#d6f0ff', '#ffffff', '#7ad9ff'], 'dragon', 'fan', 'glow+scales', 0.06],
   ['heart', 'Heart of the Pond', 5, [1, 2], [3000, 4000], 0.98, 0.6, ['#ff7ab0', '#ffd6e8', '#ffffff'], 'deep', 'fan', 'glow+scales', 0.03],
+
+  // secret: only bites once you have landed 100 fish
+  ['keeper', 'The Pond Keeper', 6, [30, 70], [10000, 15000], 0.9, 0.5, ['#121216', '#f4f4f0', '#ffffff'], 'dragon', 'fan', 'glow+scales', 0, 'secret'],
 ];
 export const SPECIES = RAW.map(([id, name, rarity, w, val, diff, dart, c, shape, tail, pat, weight, hint]) => ({ id, name, rarity, w, val, diff, dart, c, shape, tail, pat, weight, hint }));
 export const SPECIES_BY_ID = Object.fromEntries(SPECIES.map((s) => [s.id, s]));

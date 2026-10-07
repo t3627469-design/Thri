@@ -718,7 +718,7 @@ function setup(gltf) {
   try { colliders = JSON.parse((by('PondMeta') && by('PondMeta').userData.colliders) || '[]').map(([x, y, r]) => [x, -y, r]); } catch (e) { /* none */ }
   player = initPlayer({ camera, canvas, hAt, WATER_Y, colliders, isUIOpen: () => !$('modal').hidden, getSens: () => +G.state.sens || 1 });
   creatures = initCreatures({ root, scene, camera, addRipple, hAt, WATER_Y, audio, getPlayer: () => player, colliders });
-  fishing = initFishing({ scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
+  fishing = initFishing({ scene, camera, player, renderer, addRipple, hAt, WATER_Y, audio, getPreset: () => presetKey, getWeather: () => (weather ? weather.amount : 0) });
 
   initUI({
     audio,
@@ -731,7 +731,7 @@ function setup(gltf) {
   });
   fishing.applyGear();
 
-  hideInRefl.push(fishing.rod);
+  hideInRefl.push(fishing.rod, fishing.line);
   window.__pond.boat = boat;
 }
 

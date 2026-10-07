@@ -4,6 +4,10 @@ import { RARITY, SPECIES, SPECIES_BY_ID, MUTATIONS } from './game.js';
 import { fishArt } from './fishart.js';
 import { icon } from './icons.js';
 import * as UI from './ui.js';
+import { createRod } from './rod.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
 /* =====================================================================
    Fishing: cast from the dock, wait for a bite, hook it, then win the catch
@@ -17,25 +21,20 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function shoreR(th) { return 8.2 + 1.6 * Math.sin(2 * th + 0.6) + 0.9 * Math.sin(3 * th + 2.0) + 0.5 * Math.sin(5 * th + 1.0); }
 
 export function initFishing(ctx) {
-  const { scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset, getWeather } = ctx;
+  const { scene, camera, player, addRipple, hAt, WATER_Y, audio, getPreset, getWeather, renderer } = ctx;
   const save = G.state;
 
   /* ------------------- the rod, held in front of the first-person camera ----------- */
   const rodHold = new THREE.Group();
   rodHold.position.set(0.36, -0.4, -0.5);
   camera.add(rodHold);
-  const rod = new THREE.Group();
+  const rodM = createRod();
+  const rod = rodM.group;
   rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-0.16, 0.55, -1).normalize());
-  rod.scale.set(0.55, 0.72, 0.55);
+  rod.position.set(0, -0.08, 0.12);
   rodHold.add(rod);
   const lam = (c, e) => new THREE.MeshLambertMaterial({ color: c, ...(e || {}) });
-  const shaftMat = lam(0x9a7a44);
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.028, 3.2, 8).translate(0, 1.6, 0), shaftMat);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.5, 10).translate(0, 0.25, 0), lam(0xc9a36a));
-  const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 14).rotateZ(Math.PI / 2).translate(0.06, 0.58, 0), lam(0xb8b8c0));
-  rod.add(shaft, grip, reel);
   const tip = new THREE.Vector3();
-  const tipLocal = new THREE.Vector3(0, 3.2, 0);
 
   /* ------------------------------ bobber & line -------------------------- */
   const topMat = lam(0xff4630, { emissive: 0xff2a10, emissiveIntensity: 0.6 });
@@ -47,18 +46,53 @@ export function initFishing(ctx) {
   bobber.visible = false;
   scene.add(bobber);
 
-  const LINE_N = 28;
-  const lineGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: LINE_N }, () => new THREE.Vector3()));
-  const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }));
-  line.frustumCulled = false; line.visible = false;
+  const PATH_MAX = 12, SAG_N = 26, NPTS = PATH_MAX + SAG_N;
+  const lineGeo = new LineGeometry();
+  lineGeo.setPositions(new Float32Array(NPTS * 3));
+  const lineMat = new LineMaterial({ color: 0xeeeee6, linewidth: 1.7, worldUnits: false });
+  const line = new Line2(lineGeo, lineMat);
+  line.frustumCulled = false; line.renderOrder = 1;
   scene.add(line);
-  function updateLine(a, b, slack) {
-    const p = lineGeo.attributes.position;
-    for (let i = 0; i < LINE_N; i++) {
-      const k = i / (LINE_N - 1);
-      p.setXYZ(i, a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k - Math.sin(Math.PI * k) * slack, a.z + (b.z - a.z) * k);
+  const pathPts = [], _res = new THREE.Vector2();
+  function updateLine(b, slack) {
+    const n = rodM.linePath(pathPts);
+    const ib = lineGeo.attributes.instanceStart.data, arr = ib.array;
+    const pts = [];
+    for (let i = 0; i < n; i++) pts.push(pathPts[i]);
+    const a = pathPts[n - 1];
+    for (let i = 1; i <= SAG_N; i++) {
+      const k = i / SAG_N;
+      pts.push(new THREE.Vector3(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k - Math.sin(Math.PI * k) * slack, a.z + (b.z - a.z) * k));
     }
-    p.needsUpdate = true;
+    while (pts.length < NPTS) pts.push(pts[pts.length - 1]);
+    for (let i = 0; i < NPTS - 1; i++) {
+      const p = pts[i], q = pts[i + 1], o = i * 6;
+      arr[o] = p.x; arr[o + 1] = p.y; arr[o + 2] = p.z; arr[o + 3] = q.x; arr[o + 4] = q.y; arr[o + 5] = q.z;
+    }
+    ib.needsUpdate = true;
+    if (renderer) { renderer.getDrawingBufferSize(_res); lineMat.resolution.copy(_res); lineMat.linewidth = Math.max(1.4, _res.y / 620); }
+  }
+
+  /* ------------------ the "!" when a fish is on, coloured by rarity ------------------ */
+  const bang = document.createElement('div');
+  bang.id = 'bang'; bang.setAttribute('aria-hidden', 'true');
+  bang.innerHTML = `<svg viewBox="-8 -8 76 156"><defs><linearGradient id="bangRainbow" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ff3b30"/><stop offset=".17" stop-color="#ff9f0a"/><stop offset=".34" stop-color="#ffd60a"/><stop offset=".5" stop-color="#34c759"/>
+    <stop offset=".67" stop-color="#32ade6"/><stop offset=".84" stop-color="#bf5af2"/><stop offset="1" stop-color="#ff3b30"/>
+    <animateTransform attributeName="gradientTransform" type="rotate" from="0 .5 .5" to="360 .5 .5" dur="1.4s" repeatCount="indefinite"/></linearGradient></defs>
+    <path d="M14 6 Q30 -2 46 6 L38 96 Q30 102 22 96 Z"/><circle cx="30" cy="126" r="14"/></svg>`;
+  document.body.appendChild(bang);
+  const bangTier = (r) => (r >= 6 ? 'secret' : r === 5 ? 'rainbow' : r === 4 ? 'yellow' : r === 3 ? 'purple' : 'red');
+  function showBang(sp) { bang.className = 'show ' + bangTier(sp.rarity); bang.style.animation = 'none'; void bang.offsetWidth; bang.style.animation = ''; }
+  function hideBang() { bang.className = ''; }
+  const _bp = new THREE.Vector3();
+  function placeBang() {
+    if (!bang.classList.contains('show')) return;
+    _bp.copy(bob).add(new THREE.Vector3(0, 0.75, 0)).project(camera);
+    const behind = _bp.z > 1;
+    const x = Math.max(0.08, Math.min(0.92, behind ? 0.5 : _bp.x * 0.5 + 0.5)) * innerWidth;
+    const y = Math.max(0.12, Math.min(0.7, behind ? 0.35 : -_bp.y * 0.5 + 0.5)) * innerHeight;
+    bang.style.left = x + 'px'; bang.style.top = y + 'px';
   }
 
   // the fish that leaps out of the water when you land a catch
@@ -74,8 +108,7 @@ export function initFishing(ctx) {
 
   function applyGear() {
     const r = G.rod(), fl = G.floatDef();
-    shaftMat.color.set(r.color);
-    shaftMat.emissive.set(r.glow ? r.color : 0x000000); shaftMat.emissiveIntensity = r.glow ? 0.55 : 0;
+    rodM.setStyle(r.id, r);
     topMat.color.set(fl.c1); topMat.emissive.set(fl.c1); topMat.emissiveIntensity = 0.5 + (fl.glow || 0);
     botMat.color.set(fl.c2); botMat.emissive.set(fl.glow ? fl.c2 : 0x000000); botMat.emissiveIntensity = fl.glow ? 0.25 * fl.glow : 0;
   }
@@ -128,16 +161,21 @@ export function initFishing(ctx) {
   const m = { c: 0.5, vel: 0, fp: 0.5, ftarget: 0.5, ftimer: 0, prog: 0.3, zw: 0.25, hold: false, face: 1, dart: 0, inT: 0, tot: 0 };
   const bob = new THREE.Vector3();
 
-  const label = { idle: 'Cast', cast: '...', wait: 'Reel in', bite: 'HOOK IT!', mini: 'Hold', reel: '...', land: '...' };
+  const label = { idle: 'Cast', cast: '...', wait: 'Reel in', bite: 'HOOK IT!', hooked: '!', mini: 'Hold', reel: '...', land: '...' };
   function setState(s) {
     f.state = s; f.t = 0;
     el.cast.innerHTML = `${icon('rod', 18)}<span>${label[s] || 'Cast'}</span>`;
-    el.cast.classList.toggle('hot', s === 'bite');
+    el.cast.classList.toggle('hot', s === 'bite' || s === 'hooked');
     document.body.dataset.fish = s;
   }
   setState('idle');
 
   function pickSpecies() {
+    // the secret fish: guaranteed on the first bite after 100 catches, very rare after that
+    if (!tut.active && save.stats.fish >= 100) {
+      if (!save.caught.keeper) return SPECIES_BY_ID.keeper;
+      if (Math.random() < 0.008) return SPECIES_BY_ID.keeper;
+    }
     const p = getPreset(), rain = getWeather(), b = f.bait;
     const luck = G.luck(b);
     const pool = SPECIES.map((s) => {
@@ -181,14 +219,14 @@ export function initFishing(ctx) {
     if (f.bait) { G.useBait(); }
     save.stats.casts += 1; G.commit();
     f.target = tgt;
-    f.from.copy(tip);
-    bobber.visible = line.visible = true;
+    f.from.copy(bob);
     setState('cast');
     say(f.bait ? `Casting with ${f.bait.name}` : 'Casting...');
     audio.sfx('cast');
     return true;
   }
   function reelIn(msg, sfx) {
+    hideBang();
     if (msg) say(msg);
     if (sfx) audio.sfx(sfx);
     el.mini.hidden = true; player.freeze(false); m.hold = false;
@@ -197,7 +235,17 @@ export function initFishing(ctx) {
   }
   function hook() {
     f.sp = f.sp || pickSpecies();
-    if (tut.active) { f.sp = SPECIES_BY_ID.minnow; tutShow(3); }
+    if (tut.active) f.sp = SPECIES_BY_ID.minnow;
+    showBang(f.sp);
+    player.freeze(true);
+    addRipple(f.target.x, f.target.z, 1.3);
+    audio.sfx('hook');
+    setState('hooked');
+    say('Hooked! Get ready...', true);
+  }
+  function startMini() {
+    if (tut.active) tutShow(3);
+    hideBang();
     const s = f.sp, r = G.rod();
     m.zw = clamp(0.4 - s.diff * 0.16 + r.ctrl + (tut.active ? 0.1 : 0), 0.2, 0.64);
     m.c = 0.5; m.vel = 0; m.fp = 0.5; m.ftarget = 0.5; m.ftimer = 0; m.prog = 0.32; m.hold = false; m.inT = 0; m.tot = 0;
@@ -207,9 +255,6 @@ export function initFishing(ctx) {
     el.note.textContent = `+${Math.round(r.prog * 100)}% Progress Speed`;
     el.arrow.textContent = '←';
     el.mini.hidden = false; el.status.classList.remove('show');
-    player.freeze(true);
-    addRipple(f.target.x, f.target.z, 1.2);
-    audio.sfx('hook');
     setState('mini');
   }
   function press(aim) {
@@ -244,7 +289,7 @@ export function initFishing(ctx) {
     const xp = Math.round(value * 0.4 + 6 + s.rarity * 14 + (res.fresh ? 25 : 0));
     const lv = G.addXp(xp);
     const r = RARITY[s.rarity];
-    const tags = [r.name, res.fresh ? 'New species' : '', M.label, perfect ? 'Perfect catch' : ''].filter(Boolean).join(' · ');
+    const tags = [`<span class="${r.cls || ''}">${r.name}</span>`, res.fresh ? 'New species' : '', M.label, perfect ? 'Perfect catch' : ''].filter(Boolean).join(' · ');
     el.card.style.setProperty('--rc', M.color || r.color);
     el.card.innerHTML = `<div class="cicon">${fishArt(s, { mut })}</div>
       <div class="ctext"><span class="rar">${tags}</span><b>${s.name}</b>
@@ -270,7 +315,7 @@ export function initFishing(ctx) {
   }
 
   /* -------------------------------- update ------------------------------- */
-  const catchPt = new THREE.Vector3();
+  const catchPt = new THREE.Vector3(), _dangle = new THREE.Vector3();
   function update(dt, t) {
     // rod animation: swing back and forward on a cast, dip while a fish pulls
     let rx = 0;
@@ -279,13 +324,20 @@ export function initFishing(ctx) {
     else if (f.state === 'bite') rx = -0.08 + Math.sin(t * 30) * 0.03;
     else rx = Math.sin(t * 1.3) * 0.015 + (player.moving ? Math.sin(t * 9) * 0.02 : 0);
     rodHold.rotation.x += (rx - rodHold.rotation.x) * Math.min(1, dt * 16);
+    const bendT = f.state === 'mini' ? 0.95 + Math.sin(t * 9) * 0.12 + (m.hold ? 0.25 : 0) : f.state === 'hooked' ? 0.8 + Math.sin(t * 15) * 0.25
+      : f.state === 'bite' ? 0.25 + Math.sin(t * 30) * 0.15 : f.state === 'land' ? 0.55 : f.state === 'cast' ? (f.t < 0.25 ? -0.5 : f.t < 0.5 ? 0.6 : 0.1) : 0.03;
+    rodM.update(dt, bendT, (f.state === 'mini' && m.hold) || f.state === 'reel' || f.state === 'land');
     camera.updateMatrixWorld();
-    rod.updateMatrixWorld();
-    tip.copy(tipLocal).applyMatrix4(rod.matrixWorld);
+    rodM.tip(tip);
 
     f.t += dt;
     let slack = 0.5;
     switch (f.state) {
+      case 'idle': {
+        // the bobber hangs a little below the tip and sways
+        bob.copy(tip); bob.y -= 0.3; bob.x += Math.sin(t * 1.7) * 0.03; bob.z += Math.cos(t * 1.3) * 0.03;
+        slack = 0; break;
+      }
       case 'cast': {
         const k = Math.min(1, f.t / 0.85), e = k * k * (3 - 2 * k);
         bob.lerpVectors(f.from, f.target, e); bob.y += Math.sin(Math.PI * k) * 2.4;
@@ -306,6 +358,7 @@ export function initFishing(ctx) {
           f.sp = tut.active ? SPECIES_BY_ID.minnow : pickSpecies();
           f.bite = tut.active ? 999 : 1.35; if (tut.active) tutShow(2);
           setState('bite'); say('Bite! Press Space now!', true); audio.sfx('bite'); addRipple(f.target.x, f.target.z, 1.4);
+          showBang(f.sp);
         }
         break;
       }
@@ -315,6 +368,13 @@ export function initFishing(ctx) {
         f.ripT -= dt; if (f.ripT < 0) { f.ripT = 0.25; addRipple(f.target.x, f.target.z, 0.5); }
         f.bite -= dt;
         if (f.bite <= 0) { f.sp = null; reelIn('Too slow, it got away.', 'miss'); }
+        break;
+      }
+      case 'hooked': {
+        bob.copy(f.target); bob.x += Math.sin(t * 11) * 0.1; bob.z += Math.cos(t * 8.7) * 0.1; bob.y = WATER_Y - 0.05 + Math.abs(Math.sin(t * 13)) * 0.06;
+        f.ripT -= dt; if (f.ripT < 0) { f.ripT = 0.3; addRipple(bob.x, bob.z, 0.7); }
+        slack = 0.01;
+        if (f.t >= 2.0) startMini();
         break;
       }
       case 'mini': {
@@ -361,15 +421,15 @@ export function initFishing(ctx) {
         fishMesh.position.lerpVectors(f.land.from, catchPt, k); fishMesh.position.y += Math.sin(Math.PI * k) * 1.9;
         fishMesh.rotation.set(0, Math.atan2(-(catchPt.z - f.land.from.z), catchPt.x - f.land.from.x), Math.sin(k * 14) * 0.5);
         bob.copy(fishMesh.position); slack = 0.1;
-        if (k >= 1) { fishMesh.visible = false; bobber.visible = line.visible = false; setState('idle'); showCard(); }
+        if (k >= 1) { fishMesh.visible = false; setState('idle'); showCard(); }
         break;
       }
       case 'reel': {
         const k = Math.min(1, f.t / 0.55);
-        bob.lerpVectors(f.from, tip, k * k); bob.y += Math.sin(Math.PI * k) * 0.8;
+        bob.lerpVectors(f.from, _dangle.copy(tip).add(new THREE.Vector3(0, -0.3, 0)), k * k); bob.y += Math.sin(Math.PI * k) * 0.8;
         slack = 0.2 * (1 - k);
         if (k >= 1) {
-          bobber.visible = line.visible = false; setState('idle');
+          setState('idle');
           if (tut.active && tut.step < 5) {
             tutShow(0);
             if (tut.retry) { el.coachTitle.textContent = 'Try again'; el.coachBody.textContent = 'It happens. Cast again, this fish is easy to follow.'; tut.retry = false; }
@@ -379,12 +439,10 @@ export function initFishing(ctx) {
       }
       default: break;
     }
-    const pull = f.state === 'mini' ? 0.07 + Math.sin(t * 14) * 0.012 : f.state === 'bite' ? Math.sin(t * 30) * 0.02 : 0;
-    shaft.rotation.z = -pull * 1.4;
-    if (bobber.visible) {
-      if (f.state !== 'land') bobber.position.copy(bob); else bobber.position.set(0, -50, 0);
-      updateLine(tip, bob, slack);
-    }
+    bobber.visible = f.state !== 'land';
+    bobber.position.copy(bob);
+    updateLine(bob, slack);
+    placeBang();
   }
 
   /* --------------------------------- input ------------------------------- */
@@ -407,11 +465,11 @@ export function initFishing(ctx) {
   setTimeout(() => { if (!save.tutorial) tutStart(); else say('Press Space or click the water to cast'); }, 6500);
 
   return {
-    update, applyGear, replayTutorial: tutStart, rod: rodHold, cast: (aim) => press(aim),
+    update, applyGear, replayTutorial: tutStart, rod: rodHold, line, cast: (aim) => press(aim),
     onWaterClick(hit) {
       if (f.state === 'idle') { cast(hit); return true; }
       return f.state !== 'wait';
     },
-    busy: () => f.state === 'bite' || f.state === 'mini' || f.state === 'land',
+    busy: () => f.state === 'bite' || f.state === 'hooked' || f.state === 'mini' || f.state === 'land',
   };
 }

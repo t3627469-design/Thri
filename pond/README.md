@@ -18,9 +18,10 @@ You explore in **first person**. Click to capture the mouse and look around (or 
 Day and night pass **automatically** (a full day takes 12 minutes by default; change it in Settings). The clock buttons jump to a time of day and the pause button stops the sun.
 
 ## The fishing game
-Walk to the water, look at it, wait for the bobber to dip, hook it, then win the catch bar at the bottom of the screen.
+Walk to the water with a modelled rod (cork grip, reel with a turning crank, line guides, a blank that bends when a fish pulls; each rod in the shop has its own finish), look at it, wait for the bobber to dip, hook it, then win the catch bar at the bottom of the screen.
 - **Space** or click to cast where you are looking, **Space** at the bite, then **hold** (Space / mouse / touch) to move the white bar right and release to let it fall back. Keep it over the fish to fill the bar
-- **36 species** from Common to Mythic, each drawn from its own parameters (body shape, tail, fins, pattern). Mutations: Shiny, Albino, Giant
+- When a fish bites, a big **!** appears over the bobber, coloured by rarity: red (Common to Rare), purple (Epic), yellow (Legendary), rainbow (Exotic), white and black (Secret). After you hook it there are 2 seconds before the catch bar starts
+- **37 species** from Common to Exotic, plus a **Secret** fish that only bites once you have landed 100 fish, each drawn from its own parameters (body shape, tail, fins, pattern). Mutations: Shiny, Albino, Giant
 - Time of day and weather change what bites. Catches land in your **bag**
 - **Tackle shop** (walk up to the stall and press `E`, or press `B`): sell fish, buy 6 rods, 5 baits, 6 floats and a bigger bag. Gear is level gated
 - **Journal** (`J`): every species you have found, stats and mutations. Progress is saved in your browser
