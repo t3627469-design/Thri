@@ -7,8 +7,11 @@ CP=tools/asm-9.7.jar:tools/asm-tree-9.7.jar
 rm -rf build && mkdir -p build/stubs build/guard build/patch build/work
 javac -nowarn -d build/stubs $(find stubs -name '*.java')
 (cd build/work && unzip -q "$(realpath "../../$1" 2>/dev/null || echo "$1")")
-javac -nowarn -source 21 -target 21 -cp build/stubs:build/work -d build/guard src/dev/rex/farmbuilder/modules/Guard.java src/dev/rex/farmbuilder/modules/Climb.java
+javac -nowarn -source 21 -target 21 -cp build/stubs:build/work:build/work/META-INF/jars/baritone-1.21.11-SNAPSHOT.jar -d build/guard src/dev/rex/farmbuilder/modules/*.java
 javac -nowarn -cp $CP -d build/patch Patch.java
 java -cp build/patch:$CP Patch build/work
 cp build/guard/dev/rex/farmbuilder/modules/*.class build/work/dev/rex/farmbuilder/modules/
 python3 repack.py "$1" "$2"
+mkdir -p build/test
+javac -nowarn -d build/test src/dev/rex/farmbuilder/modules/FlyMath.java test/FlyTest.java
+java -cp build/test dev.rex.farmbuilder.modules.FlyTest

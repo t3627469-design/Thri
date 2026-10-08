@@ -1,5 +1,7 @@
 package dev.rex.farmbuilder.modules;
 
+import baritone.api.BaritoneAPI;
+import baritone.api.IBaritone;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
@@ -23,25 +25,29 @@ import net.minecraft.class_638;
 import net.minecraft.class_746;
 
 /**
- * "Build up": gets the player to blocks that are too high to reach.
+ * Getting the player to blocks it can't place from where it stands.
  *
- * Creative: fly to a free spot within reach of the block.
- * Survival: when the spot to stand on is 2+ blocks above the player, build a pillar of spare
- * blocks next to the build (beside the platform the built layers form), climb it, step onto the
- * platform and keep building. The pillar stays up until the build is done (or stalls), then it is
- * mined down again. Works for only-build and human-builder.
+ * Creative: flies (direct, collision-checked position steps; no keys) to a free spot from which
+ * the block can be placed with the right orientation, then hands back to the builder.
+ * Survival: when the spot to stand on is 2+ blocks above the player, builds a pillar of spare
+ * blocks beside the platform the finished layers form, climbs it, steps onto the platform and keeps
+ * building from up there. The pillar is mined down when the build is done, stalls, or the module
+ * leaves its build phase. Works for only-build and human-builder.
  */
 final class Climb {
     private static final int MAX_PILLAR = 38;
     private static final int STALL_TICKS = 1200;
     private static final int RETRY_TICKS = 300;
+    private static final double STEP = 0.6;
+    private static final int SPOT_TICKS = 300;
+    private static final int SPOT_TRIES = 5;
 
     private static final Pillar pillar = new Pillar();
     private static final Approach walker = new Approach();
-    private static final Approach flier = new Approach();
     private static final Map<Class<?>, Map<String, Field>> fields = new HashMap<>();
     private static final Map<Class<?>, Method> holds = new HashMap<>();
     private static final Map<class_2338, Integer> failedUntil = new HashMap<>();
+    private static final Set<class_2338> badSpots = new HashSet<>();
 
     private static int clock;
     private static int lastSize = -1;
@@ -51,10 +57,13 @@ final class Climb {
     private static class_2338 climbTarget;
     private static class_1792 climbItem;
     private static Module climbModule;
-    private static boolean flying;
-    private static int flyTicks;
     private static class_2338 flyFor;
     private static class_2338 flySpot;
+    private static int flyTicks;
+    private static int spotTries;
+    private static List<double[]> route;
+    private static class_2338 routeFor;
+    private static int routeIdx;
     private static class_2338 standFor;
     private static class_2338 standSpot;
     private static int standTick = -1000;
@@ -66,34 +75,29 @@ final class Climb {
     static void reset() {
         pillar.reset();
         walker.reset();
-        flier.stop();
         climbLevel = Integer.MIN_VALUE;
         climbGoal = null;
         climbTarget = null;
         climbItem = null;
         climbModule = null;
-        flying = false;
         flyFor = null;
         flySpot = null;
+        route = null;
+        badSpots.clear();
         standFor = null;
         standSpot = null;
         failedUntil.clear();
         lastSize = -1;
     }
 
-    // ------------------------------------------------------------------ hooks
+    // ================================================================== hooks
 
-    /** Replaces the `null` approach in Reposition.tick so creative players reposition by flying. */
-    static Approach flightApproach() {
-        return Approach.canFly() ? flier : null;
-    }
-
-    /** True while the pillar is holding the player up and the climb logic owns the vertical state. */
+    /** Pillar.tickUp's "on the ground" test: also wait until the feet reach the wanted height. */
     static boolean pillarReady(class_746 player) {
         return player.method_24828() && (climbLevel == Integer.MIN_VALUE || player.method_23318() >= climbLevel - 0.05);
     }
 
-    /** Top of Module.tick(): pillar mine-down when the module leaves the building phase. */
+    /** Top of Module.tick(): mine the pillar down (and consume the tick) whenever it is coming down. */
     static boolean always(Module m) {
         class_310 mc = MeteorClient.mc;
         if (mc.field_1724 == null || mc.field_1687 == null) {
@@ -103,9 +107,6 @@ final class Climb {
             return false;
         }
         Pillar.Mode mode = pillar.mode();
-        if (mode == Pillar.Mode.OFF) {
-            return false;
-        }
         if (mode == Pillar.Mode.HOLD) {
             String phase = phaseName(m);
             if (phase != null && !phase.equals("BUILD") && !phase.equals("HOTBAR")) {
@@ -119,10 +120,7 @@ final class Climb {
         return false;
     }
 
-    /**
-     * Start of every build tick (via Guard.pre). Runs the climb; returns true when it used the
-     * tick so the normal build step is skipped.
-     */
+    /** Start of every build tick. True = the climb used this tick. */
     static boolean tick(Planner planner, Module m) {
         ++clock;
         int size = planner.size();
@@ -141,21 +139,24 @@ final class Climb {
         return false;
     }
 
-    /** Top of goToward(): fly (creative) or start a pillar (survival). True = handled this tick. */
+    /** Top of goToward() (the builder wants to move for this block). True = handled this tick. */
     static boolean goToward(Module m, Planner planner, class_2338 target, boolean underUs) {
         class_310 mc = MeteorClient.mc;
-        if (mc.field_1724 == null || mc.field_1687 == null || underUs) {
+        if (mc.field_1724 == null || mc.field_1687 == null) {
             return false;
         }
         double reach = reach(m);
+        if (Approach.canFly()) {
+            return fly(planner, target, reach);
+        }
+        if (underUs) {
+            return false;
+        }
         class_243 eye = mc.field_1724.method_33571();
         double dx = target.method_10263() + 0.5 - eye.field_1352;
         double dy = target.method_10264() + 0.5 - eye.field_1351;
         double dz = target.method_10260() + 0.5 - eye.field_1350;
         double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (Approach.canFly()) {
-            return fly(target, dist, reach);
-        }
         Pillar.Mode pm = pillar.mode();
         if (dist <= reach - 0.2 || pm == Pillar.Mode.WALK || pm == Pillar.Mode.UP || pm == Pillar.Mode.DOWN) {
             return false;
@@ -184,79 +185,171 @@ final class Climb {
         return start(m, planner, target, standSpot, reach);
     }
 
-    // ------------------------------------------------------------------ creative flight
+    // ================================================================== creative flight
 
-    private static boolean fly(class_2338 target, double dist, double reach) {
-        double near = Math.max(1.4, Math.min(3.0, reach - 0.6));
-        if (dist <= near + 0.4) {
-            if (flying) {
-                flier.stop();
-                flying = false;
-            }
-            flyTicks = 0;
-            return false;
-        }
-        if (!target.equals(flyFor) || flySpot == null || !passableSpot(flySpot)) {
+    private static boolean fly(Planner planner, class_2338 target, double reach) {
+        if (!target.equals(flyFor)) {
             flyFor = target;
-            flySpot = chooseSpot(target, near);
-            flyTicks = 0;
+            flySpot = null;
+            badSpots.clear();
+            spotTries = 0;
         }
-        if (flySpot == null || ++flyTicks > 400) {
-            if (flying) {
-                flier.stop();
-                flying = false;
+        if (flySpot != null && (atSpot(flySpot) || ++flyTicks > SPOT_TICKS)) {
+            // got there (or couldn't) and the builder still can't place: try somewhere else
+            badSpots.add(flySpot);
+            flySpot = null;
+        }
+        if (flySpot == null) {
+            if (++spotTries > SPOT_TRIES) {
+                flyFor = null;
+                planner.stuck(target);
+                return true;
             }
-            return false;
+            flySpot = chooseSpot(planner, target, Math.max(1.5, Math.min(3.4, reach - 0.6)));
+            flyTicks = 0;
+            if (flySpot == null) {
+                flyFor = null;
+                planner.stuck(target);
+                return true;
+            }
+            Look.releaseMovementKeys();
+            cancelBaritone();
         }
-        flier.fly(flySpot, 0.8);
-        flying = true;
+        step(flySpot);
         return true;
     }
 
-    private static class_2338 chooseSpot(class_2338 t, double near) {
+    /** Free spot near the block from which it can be placed (with the right orientation if it has one). */
+    private static class_2338 chooseSpot(Planner planner, class_2338 t, double near) {
         class_310 mc = MeteorClient.mc;
+        class_2680 want = Guard.target(t);
+        boolean strict = want != null && Guard.orientable(want) && !Guard.fellBack(t);
         double px = mc.field_1724.method_23317();
         double py = mc.field_1724.method_23318();
         double pz = mc.field_1724.method_23321();
-        class_2338 best = null;
-        double bestScore = Double.MAX_VALUE;
+        double cx = t.method_10263() + 0.5;
+        double cy = t.method_10264() + 0.5;
+        double cz = t.method_10260() + 0.5;
+        List<Object[]> spots = new ArrayList<>();
         for (int dx = -3; dx <= 3; ++dx) {
-            for (int dy = -1; dy <= 3; ++dy) {
+            for (int dy = -2; dy <= 3; ++dy) {
                 for (int dz = -3; dz <= 3; ++dz) {
                     class_2338 c = t.method_10069(dx, dy, dz);
-                    if (c.equals(t) || c.method_10084().equals(t)) {
+                    if (badSpots.contains(c) || c.equals(t) || c.method_10084().equals(t)) {
                         continue;
                     }
-                    double ex = c.method_10263() + 0.5 - (t.method_10263() + 0.5);
-                    double ey = c.method_10264() + 1.62 - (t.method_10264() + 0.5);
-                    double ez = c.method_10260() + 0.5 - (t.method_10260() + 0.5);
-                    double eye = Math.sqrt(ex * ex + ey * ey + ez * ez);
-                    if (eye < 1.4 || eye > near || !passableSpot(c)) {
+                    double ex = c.method_10263() + 0.5 - cx;
+                    double ey = c.method_10264() + 1.62 - cy;
+                    double ez = c.method_10260() + 0.5 - cz;
+                    double de = Math.sqrt(ex * ex + ey * ey + ez * ez);
+                    if (de > near || de < 1.0 || !boxFree(c.method_10263() + 0.5, c.method_10264(), c.method_10260() + 0.5)) {
                         continue;
                     }
                     double fx = c.method_10263() + 0.5 - px;
                     double fy = c.method_10264() - py;
                     double fz = c.method_10260() + 0.5 - pz;
                     double score = Math.sqrt(fx * fx + fy * fy + fz * fz);
-                    if (Guard.isTarget(c) || Guard.isTarget(c.method_10084())) {
-                        score += 6.0;
+                    if (planner.pending(c) || planner.pending(c.method_10084())) {
+                        score += 4.0;
                     }
-                    if (score < bestScore) {
-                        bestScore = score;
-                        best = c;
+                    spots.add(new Object[]{score, c});
+                }
+            }
+        }
+        spots.sort((a, b) -> Double.compare((Double) a[0], (Double) b[0]));
+        int checked = 0;
+        for (Object[] s : spots) {
+            if (++checked > 80) {
+                break;
+            }
+            class_2338 c = (class_2338) s[1];
+            class_243 eye = new class_243(c.method_10263() + 0.5, c.method_10264() + 1.62, c.method_10260() + 0.5);
+            Look.Placement p = want != null ? Guard.best(t, want, eye, strict) : Guard.nearestFace(t, eye);
+            if (p != null) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private static boolean atSpot(class_2338 s) {
+        class_746 p = MeteorClient.mc.field_1724;
+        double dx = s.method_10263() + 0.5 - p.method_23317();
+        double dy = s.method_10264() - p.method_23318();
+        double dz = s.method_10260() + 0.5 - p.method_23321();
+        return dx * dx + dy * dy + dz * dz < 0.04;
+    }
+
+    /** One collision-checked step along a searched route to the spot (no keys). */
+    private static void step(class_2338 s) {
+        class_746 p = MeteorClient.mc.field_1724;
+        p.method_31549().field_7479 = true;
+        double px = p.method_23317();
+        double py = p.method_23318();
+        double pz = p.method_23321();
+        if (route == null || !s.equals(routeFor)) {
+            routeFor = s;
+            int sx = (int) Math.floor(px);
+            int sy = (int) Math.floor(py + 0.001);
+            int sz = (int) Math.floor(pz);
+            if (!cellFree(sx, sy, sz) && cellFree(sx, sy + 1, sz)) {
+                ++sy;
+            }
+            List<int[]> cells = FlyMath.route(sx, sy, sz, s.method_10263(), s.method_10264(), s.method_10260(), 8, 30000, Climb::cellFree);
+            if (cells == null) {
+                route = null;
+                flyTicks = SPOT_TICKS + 1;
+                return;
+            }
+            route = new ArrayList<>();
+            route.add(new double[]{sx + 0.5, sy, sz + 0.5});
+            for (int[] c : FlyMath.corners(sx, sy, sz, cells)) {
+                route.add(new double[]{c[0] + 0.5, c[1], c[2] + 0.5});
+            }
+            routeIdx = 0;
+        }
+        if (routeIdx >= route.size()) {
+            return;
+        }
+        double[] w = route.get(routeIdx);
+        double[] n = FlyMath.toward(px, py, pz, w[0], w[1], w[2], STEP);
+        if (!boxFree(n[0], n[1], n[2])) {
+            route = null;
+            flyTicks += 20;
+            return;
+        }
+        p.method_5814(n[0], n[1], n[2]);
+        if (n[0] == w[0] && n[1] == w[1] && n[2] == w[2]) {
+            ++routeIdx;
+        }
+    }
+
+    private static boolean cellFree(int x, int y, int z) {
+        class_638 w = MeteorClient.mc.field_1687;
+        return w.method_8393(x >> 4, z >> 4) && passable(new class_2338(x, y, z)) && passable(new class_2338(x, y + 1, z));
+    }
+
+    static boolean boxFree(double x, double y, double z) {
+        class_638 w = MeteorClient.mc.field_1687;
+        int x0 = (int) Math.floor(x - 0.299);
+        int x1 = (int) Math.floor(x + 0.299);
+        int y0 = (int) Math.floor(y + 0.001);
+        int y1 = (int) Math.floor(y + 1.799);
+        int z0 = (int) Math.floor(z - 0.299);
+        int z1 = (int) Math.floor(z + 0.299);
+        for (int i = x0; i <= x1; ++i) {
+            for (int k = z0; k <= z1; ++k) {
+                if (!w.method_8393(i >> 4, k >> 4)) {
+                    return false;
+                }
+                for (int j = y0; j <= y1; ++j) {
+                    if (!passable(new class_2338(i, j, k))) {
+                        return false;
                     }
                 }
             }
         }
-        return best;
-    }
-
-    private static boolean passableSpot(class_2338 c) {
-        class_638 w = MeteorClient.mc.field_1687;
-        if (!w.method_8393(c.method_10263() >> 4, c.method_10260() >> 4)) {
-            return false;
-        }
-        return passable(c) && passable(c.method_10084());
+        return true;
     }
 
     private static boolean passable(class_2338 p) {
@@ -265,7 +358,18 @@ final class Climb {
         return s.method_26215() || s.method_26227().method_15769() && s.method_26220((class_1922) w, p).method_1110();
     }
 
-    // ------------------------------------------------------------------ survival pillar
+    private static void cancelBaritone() {
+        try {
+            IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
+            if (b != null && b.getCustomGoalProcess().isActive()) {
+                b.getPathingBehavior().cancelEverything();
+            }
+        } catch (Throwable t) {
+            // no baritone
+        }
+    }
+
+    // ================================================================== survival pillar
 
     private static boolean start(Module m, Planner planner, class_2338 target, class_2338 stand, double reach) {
         class_1792 item = Pillar.pickItem(inventory(), planner.remainingItems().keySet());
@@ -314,8 +418,8 @@ final class Climb {
     }
 
     /**
-     * Column next to the platform at the stand level. Walks outward over the standable platform
-     * cells and returns the best free column beside it (nearest to the player, short pillar).
+     * Column next to the platform at the stand level: walks outward over the standable platform
+     * cells and returns the best free column beside it (close to the player, short pillar).
      */
     private static class_2338 chooseBase(class_2338 stand) {
         class_310 mc = MeteorClient.mc;
@@ -363,13 +467,11 @@ final class Climb {
 
     /** Standing cell on the ground under a free column, or null when the column can't host a pillar. */
     private static class_2338 column(int x, int z, int level) {
-        class_638 w = MeteorClient.mc.field_1687;
         if (!passable(new class_2338(x, level, z)) || !passable(new class_2338(x, level + 1, z))) {
             return null;
         }
         for (int y = level - 1; y >= level - MAX_PILLAR; --y) {
-            class_2338 cell = new class_2338(x, y, z);
-            if (passable(cell)) {
+            if (passable(new class_2338(x, y, z))) {
                 continue;
             }
             class_2338 base = new class_2338(x, y + 1, z);
@@ -407,7 +509,7 @@ final class Climb {
         return held;
     }
 
-    // ------------------------------------------------------------------ module access (reflection)
+    // ================================================================== module access (reflection)
 
     private static Field field(Object o, String name) throws NoSuchFieldException {
         Map<String, Field> map = fields.computeIfAbsent(o.getClass(), k -> new HashMap<>());

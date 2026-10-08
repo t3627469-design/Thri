@@ -43,6 +43,18 @@ public class Patch {
     }
 
     static void look(ClassNode cn) {
+        // useCrosshairBlock(): if (!Guard.allowClick()) return false;
+        MethodNode u = method(cn, "useCrosshairBlock", "()Z");
+        LabelNode ok = new LabelNode();
+        InsnList gate = new InsnList();
+        gate.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PKG + "Guard", "allowClick", "()Z", false));
+        gate.add(new JumpInsnNode(Opcodes.IFNE, ok));
+        gate.add(new InsnNode(Opcodes.ICONST_0));
+        gate.add(new InsnNode(Opcodes.IRETURN));
+        gate.add(ok);
+        gate.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+        u.instructions.insert(gate);
+
         MethodNode m = method(cn, "findPlacement", "(Lnet/minecraft/class_2338;)L" + PKG + "Look$Placement;");
         InsnList il = new InsnList();
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -96,8 +108,7 @@ public class Patch {
     }
 
     /**
-     * Build-up hooks: Module.tick() mine-down check, goToward() fly/pillar, Reposition gets the flight
-     * approach (creative), and only-build's own startPillar (which climbs back down too early) is retired.
+     * Build-up hooks: Module.tick() mine-down check, goToward() fly/pillar, and only-build's own startPillar (which climbs back down too early) is retired.
      */
     static void climbHooks(ClassNode cn, boolean onlyBuild) {
         // tick(): if (Guard.always(this)) return;
@@ -129,20 +140,6 @@ public class Patch {
         il2.add(go2);
         il2.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
         g.instructions.insert(il2);
-
-        // Reposition.tick(..., null) -> Reposition.tick(..., Guard.flightApproach())
-        MethodNode r = method(cn, onlyBuild ? "walkOrGiveUp" : "goToward",
-            "(Lbaritone/api/IBaritone;Lnet/minecraft/class_2338;Z)V");
-        int swapped = 0;
-        for (AbstractInsnNode i = r.instructions.getFirst(); i != null; i = i.getNext()) {
-            if (i instanceof MethodInsnNode mi && mi.owner.equals(PKG + "Reposition") && mi.name.equals("tick")
-                && i.getPrevious().getOpcode() == Opcodes.ACONST_NULL) {
-                r.instructions.set(i.getPrevious(), new MethodInsnNode(Opcodes.INVOKESTATIC, PKG + "Guard",
-                    "flightApproach", "()L" + PKG + "Approach;", false));
-                swapped++;
-            }
-        }
-        if (swapped != 1) throw new IllegalStateException("Reposition.tick null sites in " + cn.name + ": " + swapped);
 
         if (onlyBuild) {
             MethodNode sp = method(cn, "startPillar", "(Lnet/minecraft/class_2338;)Z");
