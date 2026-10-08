@@ -142,11 +142,6 @@ final class Climb {
         }
         double reach = reach(m);
         landIfFlying();
-        if (Guard.printing) {
-            // printer mode: the player does the moving; out-of-reach blocks just wait
-            walker.stop();
-            return true;
-        }
         Pillar.Mode pm = pillar.mode();
         if (underUs || pm == Pillar.Mode.WALK || pm == Pillar.Mode.UP || pm == Pillar.Mode.DOWN) {
             return false;
@@ -360,7 +355,24 @@ final class Climb {
         return f;
     }
 
-    private static double reach(Module m) {
+    /** True while a pillar is going up or coming down (the printer leaves the bot alone then). */
+    static boolean pillarBusy() {
+        Pillar.Mode m = pillar.mode();
+        return m == Pillar.Mode.WALK || m == Pillar.Mode.UP || m == Pillar.Mode.DOWN;
+    }
+
+    /** An int setting of a module (its private Setting field's get()), or the fallback. */
+    static int intSetting(Module m, String field, int fallback) {
+        try {
+            Object v = field(m, field).get(m);
+            Object value = v.getClass().getMethod("get").invoke(v);
+            return value instanceof Number ? ((Number) value).intValue() : fallback;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return fallback;
+        }
+    }
+
+    static double reach(Module m) {
         try {
             Object setting = field(m, "reach").get(m);
             Object v = setting.getClass().getMethod("get").invoke(setting);

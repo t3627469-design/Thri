@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.systems.modules.Module;
@@ -66,7 +65,6 @@ final class Guard {
     private static int lastProgress;
     /** Printer mode: no planner, no walking. Each tick the nearest reachable block that can be placed facing right is looked at and placed. */
     static boolean printing;
-    private static final Random idle = new Random();
     private static final Map<class_2338, Integer> lastTry = new HashMap<>();
     private static final Map<class_2338, Integer> snaps = new HashMap<>();
     private static final int PRINT_SNAPS = 3;
@@ -119,15 +117,15 @@ final class Guard {
         if (planner.size() != lastSize) {
             lastSize = planner.size();
             lastProgress = clock;
-        } else if (!printing && clock - lastProgress > STALL_LIMIT && planner.size() > 0) {
+        } else if (clock - lastProgress > STALL_LIMIT && planner.size() > 0) {
             stalled(planner, module);
             lastProgress = clock;
         }
-        if (printing) {
-            return true;
-        }
         if (mc.field_1755 != null || disabled()) {
             return false;
+        }
+        if (printing && !Climb.pillarBusy() && printerStep(wanted, module)) {
+            return true;
         }
         try {
             return Climb.tick(planner, module);
@@ -195,7 +193,7 @@ final class Guard {
             Integer since = orientBlocked.get(pos);
             if (since == null) {
                 orientBlocked.put(pos, clock);
-            } else if (!printing && clock - since > GIVE_UP_TICKS) {
+            } else if (clock - since > GIVE_UP_TICKS) {
                 giveUp(pos);
             }
             return null;
@@ -279,22 +277,20 @@ final class Guard {
     }
 
     /**
-     * One printer tick: the nearest block in reach that can be placed facing right is looked at (smoothly,
-     * so the turn is visible) and placed. No planner, no walking; the player moves.
+     * Printing, first call each build tick: the nearest block in reach that can be placed facing right is
+     * looked at (a visible turn) and placed. Returns true when it used the tick (turned or clicked). False
+     * when nothing is in reach, so the normal build step walks the player to the next block.
      */
-    static void printerTick(Map<class_2338, class_2680> wanted, int speedLevel, double reach, Module module) {
+    static boolean printerStep(Map<class_2338, class_2680> wanted, Module module) {
         class_310 mc = MeteorClient.mc;
-        if (mc.field_1724 == null || mc.field_1687 == null || mc.field_1755 != null || wanted == null || wanted.isEmpty()) {
-            return;
+        if (mc.field_1724 == null || mc.field_1687 == null || wanted == null || wanted.isEmpty()) {
+            return false;
         }
-        if (targets != wanted) {
-            reset(wanted);
-        }
-        sentYaw = mc.field_1724.method_36454();
-        sentPitch = mc.field_1724.method_36455();
-        sentKnown = true;
-        ++clock;
+        double reach = Climb.reach(module);
+        int speedLevel = Climb.intSetting(module, "speed", 4);
         class_243 eye = mc.field_1724.method_33571();
+        Planner planner = curPlanner;
+        int layer = planner == null ? Integer.MIN_VALUE : planner.activeLayerY();
         Look.Placement pick = null;
         class_2338 pickPos = null;
         double pickD = Double.MAX_VALUE;
@@ -302,6 +298,9 @@ final class Guard {
             class_2338 p = e.getKey();
             double d = eye.method_1022(class_243.method_24953(p));
             if (d > reach + 0.5 || d >= pickD) {
+                continue;
+            }
+            if (planner != null && (p.method_10264() != layer || !planner.pending(p))) {
                 continue;
             }
             if (mc.field_1687.method_8320(p).equals(e.getValue())) {
@@ -323,8 +322,7 @@ final class Guard {
             pickD = d;
         }
         if (pick == null) {
-            Look.idleLook(idle);
-            return;
+            return false;
         }
         class_1792 item = wanted.get(pickPos).method_26204().method_8389();
         if (!Look.selectHotbar(stack -> stack.method_7909() == item)) {
@@ -332,12 +330,11 @@ final class Guard {
                 printWarned = true;
                 module.warning("I need %s in the hotbar to print it.", new Object[]{item});
             }
-            return;
+            return false;
         }
         printWarned = false;
-        boolean aligned = Look.lookAt(pick.hit(), (float) speedProfile(speedLevel)[2]);
-        if (!aligned) {
-            return;
+        if (!Look.lookAt(pick.hit(), (float) speedProfile(speedLevel)[2])) {
+            return true;
         }
         if (!Look.crosshairOn(pick.against(), pick.side())) {
             // Within the aim tolerance (1.5 degrees) but the crosshair still misses: the spot is a corner and the
@@ -347,17 +344,18 @@ final class Guard {
             if (misses > PRINT_SNAPS) {
                 snaps.remove(pickPos);
                 lastTry.put(pickPos, clock + 40);
-                return;
+                return false;
             }
             float[] ang = Look.anglesTo(pick.hit());
             mc.field_1724.method_36456(ang[0]);
             mc.field_1724.method_36457(ang[1]);
-            return;
+            return true;
         }
         if (Look.useCrosshairBlock()) {
             snaps.remove(pickPos);
             lastTry.put(pickPos, clock);
         }
+        return true;
     }
 
     /** Blocks dropped because no correctly oriented placement was reachable. */
@@ -491,7 +489,7 @@ final class Guard {
                 gateDenied.remove(pos);
                 return true;
             }
-            if (gateDenied.merge(pos, 1, Integer::sum) > GATE_LIMIT && !printing) {
+            if (gateDenied.merge(pos, 1, Integer::sum) > GATE_LIMIT) {
                 giveUp(pos);
             }
             return false;

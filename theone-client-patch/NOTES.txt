@@ -13,6 +13,14 @@
   the build is done, or human-builder leaves to shop/fetch. It no longer comes down just because nothing was reachable for a minute; it keeps the pillar and posts a warning instead.
 - Any error in the new code switches the new code off after 3 hits and the original behaviour takes over.
 
+1.6.1 (printer walks when nothing is in reach)
+- Printer module (TheOne > printer) now moves. Each build tick it places the nearest block in reach that can be
+  placed facing right: it turns to look at it and clicks. When nothing in reach can be placed, the bot walks to the
+  next block, the same as only-build. 1.6.0 never walked, so it stopped after the first reachable blocks.
+- Printing places only blocks in the layer being built (lowest layer still pending), so it can't wall itself in
+  with the floor it is standing on. Tested in the offline simulator: 82-92 of 93 placed across seven seeds, none wrong.
+- Placement and standing rules are the same as only-build (1.5.0): nothing is placed the wrong way.
+
 1.6.0 (printer)
 - Printer module (TheOne > printer): place the only-build schematic from where you stand. Every tick it finds the
   nearest block in reach that can be placed facing right, turns to look at it, and places it. It never walks or

@@ -61,6 +61,9 @@ EXTENDS = {
     'net/minecraft/class_3966': 'net/minecraft/class_239',
     'net/minecraft/class_1793': None,
     'net/minecraft/class_1802': None,
+    # only-build's GUI passes these to WVerticalList.add(WWidget); the verifier needs the subtype
+    'meteordevelopment/meteorclient/gui/widgets/WLabel': 'meteordevelopment/meteorclient/gui/widgets/WWidget',
+    'meteordevelopment/meteorclient/gui/widgets/WHorizontalSeparator': 'meteordevelopment/meteorclient/gui/widgets/WWidget',
 }
 IMPLEMENTS = {}
 
