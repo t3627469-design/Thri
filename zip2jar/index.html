@@ -158,6 +158,17 @@ $("go").addEventListener("click", async () => {
     let name = $("name").value.trim() || "output.jar";
     if (!/\.jar$/i.test(name)) name += ".jar";
 
+    if (window.AndroidBridge) {
+      // Inside the Android app: blob downloads aren't supported by WebView, so hand the bytes to the app.
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      const saved = window.AndroidBridge.save(name, btoa(bin));
+      if (!saved) throw new Error("couldn't write to Downloads");
+      addMsg("ok", `Saved ${name} (${(blob.size / 1024).toFixed(1)} KB) to Downloads.`);
+      $("go").disabled = false; $("go").textContent = "Convert to .jar";
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = name;
