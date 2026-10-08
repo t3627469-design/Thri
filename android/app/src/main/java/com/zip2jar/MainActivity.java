@@ -72,7 +72,13 @@ public class MainActivity extends Activity {
                 try (OutputStream out = getContentResolver().openOutputStream(uri)) {
                     out.write(Base64.decode(base64, Base64.DEFAULT));
                 }
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Saved to Downloads: " + name, Toast.LENGTH_LONG).show());
+                final String shown = name;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, "Saved to Downloads: " + shown, Toast.LENGTH_LONG).show();
+                    }
+                });
                 return true;
             } catch (Exception e) {
                 return false;
