@@ -68,7 +68,7 @@ final class Stand {
    }
 
    /** Solid floor, two free cells above it, no liquid. */
-   private static boolean standable(class_2338 feet) {
+   static boolean standable(class_2338 feet) {
       var world = MeteorClient.mc.field_1687;
       class_2338 head = feet.method_10084();
       class_2338 floor = feet.method_10074();

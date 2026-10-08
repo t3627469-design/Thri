@@ -83,6 +83,9 @@ public class OnlyBuild extends Module {
    private final Setting<Boolean> creativeSupply = this.sg.add(new BoolSetting.Builder().name("creative-supply")
       .description("In creative mode, give yourself any material the build needs, automatically, as it needs it. Does nothing in survival.").defaultValue(true).build());
 
+   private final Setting<Boolean> pillarUp = this.sg.add(new BoolSetting.Builder().name("pillar-up")
+      .description("When a layer is too high to reach and there is nothing to stand on, build a pillar of spare blocks (cobblestone, dirt...) beside the build, and break it again once the layer is done.").defaultValue(true).build());
+
    private final SettingGroup sgPanel = this.settings.createGroup("Dashboard");
    private final Setting<Boolean> useLitematica = this.sgPanel.add(new BoolSetting.Builder().name("litematica-ghost")
       .description("Show the build as Litematica ghost blocks (needs the Litematica and MaLiLib mods). Off or missing: a simple green outline.").defaultValue(true).build());
@@ -109,6 +112,10 @@ public class OnlyBuild extends Module {
    private class_2338 walkGoal;
    private final Reposition reposition = new Reposition();
    private class_2338 standSpot;
+   private final Pillar pillar = new Pillar();
+   private class_1792 pillarItem;
+   private java.util.HashSet<Long> footprint;
+   private class_2338 pillarGoal;
    private class_2338 standFor;
    private int climbTicks;
    private int walkTicks;
@@ -185,6 +192,9 @@ public class OnlyBuild extends Module {
       this.walkGoal = null;
       this.standSpot = null;
       this.standFor = null;
+      this.pillar.reset();
+      this.footprint = null;
+      this.pillarGoal = null;
       this.reposition.reset();
       this.doing = "";
       this.creativeBroken = false;
@@ -540,9 +550,11 @@ public class OnlyBuild extends Module {
       if (this.mc.field_1755 != null) return;
       if (this.ticks % 5 == 0) this.planner.sweep();
       if (this.planner.isEmpty()) {
+         if (this.pillarHandled(true)) return;
          this.finish(true);
          return;
       }
+      if (this.pillarHandled(false)) return;
       if (this.delay > 0) this.delay--;
 
       Map<class_1792, Integer> have = this.inventory();
@@ -591,6 +603,13 @@ public class OnlyBuild extends Module {
       }
       this.noneTicks = 0;
       this.syncLayer();
+      int activeY = this.planner.activeLayerY();
+      if (this.pillar.mode() == Pillar.Mode.HOLD && activeY != Integer.MIN_VALUE && activeY != this.pillar.layer()) {
+         // the layer the pillar was for is done (or a lower one needs doing): come down
+         this.approach.stop();
+         this.pillar.beginDown();
+         return;
+      }
       if (choice.kind == Planner.Kind.WALK) {
          this.goToward(b, choice.pos, choice.underUs);
          return;
@@ -671,6 +690,70 @@ public class OnlyBuild extends Module {
       return this.planner.view();
    }
 
+   /**
+    * Drives the pillar: walking to its foot, building it up, taking it down. True when it used this tick.
+    * With {@code finishing} the build is done and only the descent is left.
+    */
+   private boolean pillarHandled(boolean finishing) {
+      Pillar.Mode m = this.pillar.mode();
+      if (finishing && m != Pillar.Mode.OFF && m != Pillar.Mode.DOWN) {
+         this.approach.stop();
+         this.pillar.beginDown();
+         m = this.pillar.mode();
+      }
+      if (m == Pillar.Mode.OFF || m == Pillar.Mode.HOLD) return false;
+      this.noneTicks = 0;
+      IBaritone b = baritone();
+      if (b != null && b.getCustomGoalProcess().isActive() && m != Pillar.Mode.WALK) b.getPathingBehavior().cancelEverything();
+      switch (m) {
+         case WALK -> this.doing = this.pillar.tickWalk(this.approach);
+         case UP -> {
+            this.doing = "Building a pillar";
+            class_1792 spare = this.pillarItem;
+            this.pillar.tickUp(this.pillarGoal, this.reach.get(), () -> this.hold(spare));
+         }
+         default -> {
+            this.doing = "Taking the pillar down";
+            if (this.pillar.tickDown(this.approach)) {
+               this.doing = "";
+               return false;
+            }
+         }
+      }
+      if (this.pillar.takeFailed()) {
+         this.warning("The pillar didn't work out (no spare blocks, or I slid off). Coming down and resting that block.");
+         if (this.pillarGoal != null) this.planner.stuck(this.pillarGoal);
+      }
+      return true;
+   }
+
+   /** Starts a pillar for a block with nothing to stand on near it. False when there are no spare blocks or no ground for one. */
+   private boolean startPillar(class_2338 goal) {
+      if (!this.pillarUp.get() || this.pillar.mode() != Pillar.Mode.OFF) return false;
+      class_1792 spare = this.creativeNow ? Pillar.creativeItem() : Pillar.pickItem(this.inventory(true), this.planner.remainingItems().keySet());
+      if (spare == null) {
+         long now = System.currentTimeMillis();
+         if (now - this.lastNag > 30000L) {
+            this.lastNag = now;
+            this.warning("Can't reach the block at %d %d %d and I have no spare blocks to pillar with. Carry some cobblestone or dirt.", goal.method_10263(), goal.method_10264(), goal.method_10260());
+         }
+         return false;
+      }
+      if (this.footprint == null) {
+         this.footprint = new java.util.HashSet<>();
+         for (class_2338 p : this.wanted.keySet()) this.footprint.add(Pillar.key(p.method_10263(), p.method_10260()));
+      }
+      class_2338 base = Pillar.pickColumn(goal, this.reach.get(), this.footprint);
+      if (base == null) return false;
+      this.pillarItem = spare;
+      this.pillarGoal = goal;
+      this.pillar.start(base, spare, goal.method_10264());
+      this.standFor = null;
+      this.climbTicks = 0;
+      this.info("Building a pillar to reach layer %d.", this.planner.layerNumber());
+      return true;
+   }
+
    /** Distance from the player's eyes to the middle of the block. */
    private double eyeDistance(class_2338 p) {
       var eye = this.mc.field_1724.method_33571();
@@ -685,6 +768,12 @@ public class OnlyBuild extends Module {
     * layers work without flying); in reach but unplaceable: the stuck logic.
     */
    private void goToward(IBaritone b, class_2338 goal, boolean underUs) {
+      if (this.pillar.mode() == Pillar.Mode.HOLD) {
+         // the pillar can't be walked off and back onto: take it down, then work out how to reach this block
+         this.approach.stop();
+         this.pillar.beginDown();
+         return;
+      }
       if (!underUs && this.eyeDistance(goal) > this.reach.get() - 0.2) {
          this.stuckAt = null;
          this.stuckTicks = 0;
@@ -696,8 +785,9 @@ public class OnlyBuild extends Module {
             this.walkTicks = 0;
          }
          if (this.standSpot == null) {
-            // nothing solid to stand on within reach of it yet: the layer below has to be built first
-            if (++this.climbTicks > 30) {
+            // nothing solid to stand on within reach of it yet: pillar up beside the build, or wait for the layer below
+            if (++this.climbTicks > 10 && this.startPillar(goal)) return;
+            if (this.climbTicks > 30) {
                this.climbTicks = 0;
                this.standFor = null;
                this.approach.reset();
