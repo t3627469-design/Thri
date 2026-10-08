@@ -13,12 +13,12 @@ public class Step extends Module {
     @Override
     public void onTick() {
         if (mc.player == null) return;
-        EntityAttributeInstance a = mc.player.getAttributeInstance(EntityAttributes.GENERIC_STEP_HEIGHT);
+        EntityAttributeInstance a = mc.player.getAttributeInstance(EntityAttributes.STEP_HEIGHT);
         if (a != null) a.setBaseValue(height.get());
     }
     @Override protected void onDisable() {
         if (mc.player == null) return;
-        EntityAttributeInstance a = mc.player.getAttributeInstance(EntityAttributes.GENERIC_STEP_HEIGHT);
+        EntityAttributeInstance a = mc.player.getAttributeInstance(EntityAttributes.STEP_HEIGHT);
         if (a != null) a.setBaseValue(0.6);
     }
 }

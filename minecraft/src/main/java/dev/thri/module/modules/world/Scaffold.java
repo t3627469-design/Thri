@@ -18,7 +18,7 @@ public class Scaffold extends Module {
     public Scaffold() { super("Scaffold", Category.WORLD, 0); }
 
     @Override protected void onDisable() {
-        if (mc.player != null && savedSlot >= 0) mc.player.getInventory().selectedSlot = savedSlot;
+        if (mc.player != null && savedSlot >= 0) mc.player.getInventory().setSelectedSlot(savedSlot);
         savedSlot = -1;
     }
 
@@ -30,14 +30,13 @@ public class Scaffold extends Module {
 
         int slot = selectBlock();
         if (slot < 0) return;
-        if (savedSlot < 0) savedSlot = mc.player.getInventory().selectedSlot;
-        mc.player.getInventory().selectedSlot = slot;
+        if (savedSlot < 0) savedSlot = mc.player.getInventory().getSelectedSlot();
+        mc.player.getInventory().setSelectedSlot(slot);
 
         BlockPos support = below.down();
         BlockState supState = mc.world.getBlockState(support);
         Direction face = Direction.UP;
         if (supState.isAir()) {
-            // find any adjacent solid
             for (Direction d : Direction.values()) {
                 if (!mc.world.getBlockState(below.offset(d)).isAir()) {
                     support = below.offset(d);
@@ -58,8 +57,7 @@ public class Scaffold extends Module {
     private int selectBlock() {
         for (int i = 0; i < 9; i++) {
             ItemStack s = mc.player.getInventory().getStack(i);
-            if (s.getItem() instanceof BlockItem bi && bi.getBlock().getDefaultState().isFullCube(mc.world, BlockPos.ORIGIN))
-                return i;
+            if (s.getItem() instanceof BlockItem) return i;
         }
         return -1;
     }

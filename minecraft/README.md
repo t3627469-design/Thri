@@ -1,4 +1,4 @@
-# Thri — Fabric Client (Minecraft 1.21.1, Java 21)
+# Thri — Fabric Client (Minecraft 1.21.11, Java 21)
 
 Testing client for your own worlds and servers you own.
 
@@ -10,7 +10,9 @@ cd minecraft
 # jar: build/libs/thri-1.0.0.jar
 ```
 
-Install Fabric Loader 0.16+ for 1.21.1 and drop the jar plus Fabric API into `.minecraft/mods/`.
+Install Fabric Loader 0.16+ for 1.21.11 and drop the jar plus Fabric API into `.minecraft/mods/`.
+
+If `yarn_mappings=1.21.11+build.1` fails to resolve, bump the `+build.N` suffix in `gradle.properties` to whatever yarn's latest 1.21.11 build is on `maven.fabricmc.net` and re-run.
 
 ## Use
 

@@ -17,24 +17,24 @@ public class Reach extends Module {
 
     @Override protected void onEnable() {
         if (mc.player == null) return;
-        EntityAttributeInstance b = mc.player.getAttributeInstance(EntityAttributes.PLAYER_BLOCK_INTERACTION_RANGE);
-        EntityAttributeInstance e = mc.player.getAttributeInstance(EntityAttributes.PLAYER_ENTITY_INTERACTION_RANGE);
+        EntityAttributeInstance b = mc.player.getAttributeInstance(EntityAttributes.BLOCK_INTERACTION_RANGE);
+        EntityAttributeInstance e = mc.player.getAttributeInstance(EntityAttributes.ENTITY_INTERACTION_RANGE);
         if (b != null) savedBlock  = b.getBaseValue();
         if (e != null) savedEntity = e.getBaseValue();
     }
 
     @Override public void onTick() {
         if (mc.player == null) return;
-        EntityAttributeInstance b = mc.player.getAttributeInstance(EntityAttributes.PLAYER_BLOCK_INTERACTION_RANGE);
-        EntityAttributeInstance e = mc.player.getAttributeInstance(EntityAttributes.PLAYER_ENTITY_INTERACTION_RANGE);
+        EntityAttributeInstance b = mc.player.getAttributeInstance(EntityAttributes.BLOCK_INTERACTION_RANGE);
+        EntityAttributeInstance e = mc.player.getAttributeInstance(EntityAttributes.ENTITY_INTERACTION_RANGE);
         if (b != null) b.setBaseValue(block.get());
         if (e != null) e.setBaseValue(entity.get());
     }
 
     @Override protected void onDisable() {
         if (mc.player == null) return;
-        EntityAttributeInstance b = mc.player.getAttributeInstance(EntityAttributes.PLAYER_BLOCK_INTERACTION_RANGE);
-        EntityAttributeInstance e = mc.player.getAttributeInstance(EntityAttributes.PLAYER_ENTITY_INTERACTION_RANGE);
+        EntityAttributeInstance b = mc.player.getAttributeInstance(EntityAttributes.BLOCK_INTERACTION_RANGE);
+        EntityAttributeInstance e = mc.player.getAttributeInstance(EntityAttributes.ENTITY_INTERACTION_RANGE);
         if (b != null && savedBlock  > 0) b.setBaseValue(savedBlock);
         if (e != null && savedEntity > 0) e.setBaseValue(savedEntity);
     }
