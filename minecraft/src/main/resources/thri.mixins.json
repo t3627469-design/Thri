@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.thri.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientPlayerEntityMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "GameRendererMixin",
+    "WorldRendererMixin",
+    "ClientPlayerInteractionManagerMixin",
+    "KeyboardMixin",
+    "AbstractBlockStateMixin"
+  ],
+  "injectors": { "defaultRequire": 1 }
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "thri",
+  "version": "${version}",
+  "name": "Thri",
+  "description": "Client testing suite for your own worlds.",
+  "authors": ["you"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.thri.Thri"]
+  },
+  "mixins": ["thri.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
