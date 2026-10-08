@@ -50,6 +50,8 @@ public final class SchematicTest {
         check("sponge v3", load(dir, "e.schem", sponge(palette, blocks, 3)), palette, blocks);
         check("structure nbt", load(dir, "f.nbt", structure(palette, blocks)), palette, blocks);
 
+        checkBundledTestBuild();
+
         Schematic.StateSpec s = Schematic.StateSpec.parse("Oak_Stairs[half=top, facing=east]");
         expect("state id normalized", s.id().equals("minecraft:oak_stairs"));
         expect("state props parsed", s.props().get("half").equals("top") && s.props().get("facing").equals("east"));
@@ -59,6 +61,26 @@ public final class SchematicTest {
             System.exit(1);
         }
         System.out.println("all schematic tests passed");
+    }
+
+    /** The creative test course shipped in the jar must load and contain each feature section. */
+    private static void checkBundledTestBuild() throws IOException {
+        Path file = Path.of("src/main/resources/assets/theone-client/schematics/theone-test-build.litematic");
+        if (!Files.exists(file)) {
+            expect("bundled test build present", false);
+            return;
+        }
+        Schematic s = Schematic.load(file);
+        Map<String, String> at = new HashMap<>();
+        for (Schematic.Entry e : s.blocks) at.put(e.x() + "," + e.y() + "," + e.z(), e.state().toString());
+        expect("test build size 11x13x11", s.sizeX == 11 && s.sizeY == 13 && s.sizeZ == 11);
+        expect("test build stone floor", "minecraft:stone".equals(at.get("0,0,0")) && "minecraft:stone".equals(at.get("10,0,10")));
+        expect("test build water source", "minecraft:water[level=0]".equals(at.get("2,0,2")));
+        expect("test build wheat on farmland", "minecraft:wheat[age=0]".equals(at.get("1,1,1")) && at.get("1,0,1").startsWith("minecraft:farmland"));
+        expect("test build top stair", at.get("8,1,3").contains("facing=east") && at.get("8,1,3").contains("half=top"));
+        expect("test build double slab", at.get("8,1,7").contains("type=double"));
+        expect("test build tower and platform", "minecraft:cobblestone".equals(at.get("10,11,10")) && "minecraft:glass".equals(at.get("9,12,9")));
+        expect("test build hanging lantern", at.get("8,11,8").contains("hanging=true"));
     }
 
     private static Schematic load(Path dir, String name, Map<String, Object> root) throws IOException {

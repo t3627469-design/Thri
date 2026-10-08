@@ -104,8 +104,8 @@ public class SchematicBuilder extends Module {
 
     private final Setting<String> file = sgSchematic.add(new StringSetting.Builder()
         .name("file")
-        .description("Schematic in .minecraft/schematics (.litematic, .schem or .nbt). Empty = newest file.")
-        .defaultValue("")
+        .description("Schematic in .minecraft/schematics (.litematic, .schem or .nbt). Empty = newest file. The bundled creative test course is theone-test-build.")
+        .defaultValue("theone-test-build")
         .build()
     );
 
