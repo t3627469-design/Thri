@@ -12,3 +12,17 @@
   the build (cobblestone in creative), climbs it, steps onto the finished layers and keeps building from there. The pillar is mined down when
   the build is done, or human-builder leaves to shop/fetch. It no longer comes down just because nothing was reachable for a minute; it keeps the pillar and posts a warning instead.
 - Any error in the new code switches the new code off after 3 hits and the original behaviour takes over.
+
+1.5.0 (only-build rebuilt around the real placement rules; tested in an offline simulator)
+- Never places a block the wrong way: a block is placed only when the click will produce the schematic state
+  (stairs facing and half, logs, slabs, buttons, ...). Removed the old "place it wrong after a timeout" fallback.
+- Stands where it can place: a standing spot is only chosen if a correctly oriented face is visible from every
+  point of that cell, so the builder stops next to a block that it can't actually click.
+- Turns first, clicks next tick: the click uses the crosshair from before the turn, so a same-tick turn gave the
+  wrong facing. Mining follows the same rule.
+- Walks by hand correctly: the manual walker only moved when a block was in front of it; it now walks forward on
+  open ground and steps up one-block ledges.
+- Blocks it can't place facing right from anywhere reachable are skipped and named in a warning, not placed wrong.
+  If nothing is placed for about 75 seconds, what's left is dropped and named the same way.
+- Pillars come down when the build is finished (or human-builder leaves to shop), not because a block was out of
+  reach for a minute.

@@ -129,7 +129,12 @@ final class Climb {
         return false;
     }
 
-    /** Top of goToward() (the builder wants to move for this block). True = handled this tick. */
+    /**
+     * The builder wants to place target but can't from where it stands. Decide how to get there:
+     * place from here if a correctly oriented face is visible; otherwise walk to the nearest standing
+     * spot that works; only when no spot is reachable on foot, build a pillar up to one. True = this
+     * tick is used for moving.
+     */
     static boolean goToward(Module m, Planner planner, class_2338 target, boolean underUs) {
         class_310 mc = MeteorClient.mc;
         if (mc.field_1724 == null || mc.field_1687 == null) {
@@ -137,23 +142,17 @@ final class Climb {
         }
         double reach = reach(m);
         landIfFlying();
-        if (underUs) {
+        Pillar.Mode pm = pillar.mode();
+        if (underUs || pm == Pillar.Mode.WALK || pm == Pillar.Mode.UP || pm == Pillar.Mode.DOWN) {
             return false;
         }
-        class_243 eye = mc.field_1724.method_33571();
-        double dx = target.method_10263() + 0.5 - eye.field_1352;
-        double dy = target.method_10264() + 0.5 - eye.field_1351;
-        double dz = target.method_10260() + 0.5 - eye.field_1350;
-        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        Pillar.Mode pm = pillar.mode();
-        if (dist <= reach - 0.2 || pm == Pillar.Mode.WALK || pm == Pillar.Mode.UP || pm == Pillar.Mode.DOWN) {
+        if (Look.findPlacement(target) != null) {
+            walker.stop();
             return false;
         }
         Integer wait = failedUntil.get(target);
         if (wait != null && wait > clock) {
-            return false;
-        }
-        if (Approach.horizontal(target) > 10.0) {
+            walker.stop();
             return false;
         }
         if (!target.equals(standFor) || clock - standTick > 20) {
@@ -161,24 +160,30 @@ final class Climb {
             standTick = clock;
             standSpot = Stand.find(target, reach, planner);
         }
-        double feet = mc.field_1724.method_23318();
-        double level = standSpot != null ? (double) standSpot.method_10264() : (double) target.method_10264();
-        if (level - feet < 1.9) {
+        class_746 p = mc.field_1724;
+        double feet = p.method_23318();
+        if (standSpot != null && level(standSpot) - feet < 1.9) {
+            class_2338 here = p.method_24515();
+            if (here.equals(standSpot)) {
+                walker.stop();
+                return false;
+            }
+            walker.walk(standSpot, 0);
+            return true;
+        }
+        walker.stop();
+        double level = standSpot != null ? level(standSpot) : (double) target.method_10264();
+        if (level - feet < 1.9 || pm != Pillar.Mode.OFF) {
             return false;
         }
-        if (pm == Pillar.Mode.HOLD) {
-            pillar.beginDown();
-            return true;
+        if (Approach.horizontal(target) > 10.0) {
+            return false;
         }
         return start(m, planner, target, standSpot, reach);
     }
 
-    // ================================================================== ground checks
-
-    private static boolean passable(class_2338 p) {
-        class_638 w = MeteorClient.mc.field_1687;
-        class_2680 s = w.method_8320(p);
-        return s.method_26215() || s.method_26227().method_15769() && s.method_26220((class_1922) w, p).method_1110();
+    private static double level(class_2338 spot) {
+        return spot.method_10264();
     }
 
     // ================================================================== survival pillar
@@ -307,6 +312,13 @@ final class Climb {
         if (p != null && p.method_31549().field_7479) {
             p.method_31549().field_7479 = false;
         }
+    }
+
+    /** Air or a non-colliding block (a cell a player can stand in). */
+    private static boolean passable(class_2338 p) {
+        class_638 w = MeteorClient.mc.field_1687;
+        class_2680 s = w.method_8320(p);
+        return s.method_26215() || s.method_26227().method_15769() && s.method_26220((class_1922) w, p).method_1110();
     }
 
     private static Set<Long> footprint() {

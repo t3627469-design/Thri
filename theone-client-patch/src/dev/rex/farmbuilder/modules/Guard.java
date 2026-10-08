@@ -2,9 +2,11 @@ package dev.rex.farmbuilder.modules;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
@@ -23,6 +25,7 @@ import net.minecraft.class_2350;
 import net.minecraft.class_2680;
 import net.minecraft.class_2769;
 import net.minecraft.class_310;
+import net.minecraft.class_638;
 import net.minecraft.class_3959;
 import net.minecraft.class_3965;
 import net.minecraft.class_746;
@@ -42,8 +45,11 @@ final class Guard {
     private static final double HIT_REACH = 4.0;
     private static final double[][] OFFSETS = {{0, 0}, {0.3, 0}, {-0.3, 0}, {0, 0.3}, {0, -0.3}};
     private static final float MARGIN = 4.0f;
-    private static final int FALLBACK_TICKS = 200;
-    private static final int GATE_FALLBACK = 60;
+    /** Ticks a block may stay unplaceable-with-the-right-facing before it is dropped and reported. */
+    private static final int GIVE_UP_TICKS = 400;
+    private static final int GATE_LIMIT = 300;
+    /** No placement for this many ticks while blocks remain: leave what is left, named in a warning. */
+    private static final int STALL_LIMIT = 1500;
 
     private static Map<class_2338, class_2680> targets;
     private static int clock;
@@ -52,7 +58,11 @@ final class Guard {
     private static boolean sentKnown;
     private static final Map<class_2338, Integer> orientBlocked = new HashMap<>();
     private static final Map<class_2338, Integer> gateDenied = new HashMap<>();
-    private static final Map<class_2338, Boolean> fallback = new HashMap<>();
+    private static final Set<class_2338> skipped = new HashSet<>();
+    private static Planner curPlanner;
+    private static Module curModule;
+    private static int lastSize = -1;
+    private static int lastProgress;
     private static final Map<class_2680, Boolean> orientableCache = new HashMap<>();
     private static int errors;
 
@@ -82,6 +92,8 @@ final class Guard {
 
     /** Top of tickBuild(). Returns true when the tick was used (climbing), so the build step is skipped. */
     static boolean pre(Map<class_2338, class_2680> wanted, Planner planner, Module module) {
+        curPlanner = planner;
+        curModule = module;
         class_310 mc = MeteorClient.mc;
         if (mc.field_1724 == null || mc.field_1687 == null) {
             return false;
@@ -95,6 +107,13 @@ final class Guard {
         ++clock;
         if (clock % 100 == 0) {
             prune(planner);
+        }
+        if (planner.size() != lastSize) {
+            lastSize = planner.size();
+            lastProgress = clock;
+        } else if (clock - lastProgress > STALL_LIMIT && planner.size() > 0) {
+            stalled(planner, module);
+            lastProgress = clock;
         }
         if (mc.field_1755 != null || disabled()) {
             return false;
@@ -135,7 +154,11 @@ final class Guard {
         return Climb.pillarReady(player);
     }
 
-    /** Replaces Look.findPlacement. */
+    /**
+     * Replaces Look.findPlacement. Oriented blocks get only placements that produce the schematic
+     * state; if none is visible from here the block is left for a standing spot that has one.
+     * A block that never gets one within GIVE_UP_TICKS is dropped and reported, never placed wrong.
+     */
     static Look.Placement findPlacement(class_2338 pos) {
         class_310 mc = MeteorClient.mc;
         if (mc.field_1724 == null || mc.field_1687 == null) {
@@ -147,9 +170,12 @@ final class Guard {
             return nearestFace(pos, eye);
         }
         try {
-            boolean loose = Boolean.TRUE.equals(fallback.get(pos));
-            Look.Placement p = best(pos, want, eye, !loose);
-            if (p != null || loose) {
+            if (!orientable(want)) {
+                return best(pos, want, eye, false);
+            }
+            Look.Placement p = best(pos, want, eye, true);
+            if (p != null) {
+                orientBlocked.remove(pos);
                 return p;
             }
             if (best(pos, want, eye, false) == null) {
@@ -158,9 +184,8 @@ final class Guard {
             Integer since = orientBlocked.get(pos);
             if (since == null) {
                 orientBlocked.put(pos, clock);
-            } else if (clock - since > FALLBACK_TICKS) {
-                fallback.put(pos, Boolean.TRUE);
-                return best(pos, want, eye, false);
+            } else if (clock - since > GIVE_UP_TICKS) {
+                giveUp(pos);
             }
             return null;
         } catch (Throwable t) {
@@ -169,22 +194,170 @@ final class Guard {
         }
     }
 
-    /** True when this block can only be oriented right from somewhere else (not just out of sight). */
-    static boolean needsOtherSpot(class_2338 pos) {
-        return orientBlocked.containsKey(pos) && !Boolean.TRUE.equals(fallback.get(pos));
+    /** Drops a block that can't be placed facing right from anywhere reachable, and says so. */
+    private static void giveUp(class_2338 pos) {
+        orientBlocked.remove(pos);
+        gateDenied.remove(pos);
+        if (curPlanner != null) {
+            curPlanner.drop(pos);
+        }
+        skipped.add(pos);
+        bumpSkipped(curModule, 1);
+        if (curModule != null) {
+            curModule.warning("Skipped %s: I can't place it facing the right way from anywhere I can reach. Place it by hand.",
+                new Object[]{pos.method_10263() + " " + pos.method_10264() + " " + pos.method_10260()});
+        }
     }
 
-    static boolean fellBack(class_2338 pos) {
-        return Boolean.TRUE.equals(fallback.get(pos));
+    /** Adds to the module's own skipped count so its "Done: N placed, M skipped" line stays true. */
+    private static void bumpSkipped(Module module, int n) {
+        if (module == null || n <= 0) {
+            return;
+        }
+        try {
+            java.lang.reflect.Field f = module.getClass().getDeclaredField("skipped");
+            f.setAccessible(true);
+            f.setInt(module, f.getInt(module) + n);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            error(e);
+        }
     }
 
-    /** Start of Look.useCrosshairBlock(): false = don't click this tick (it would come out wrong). */
+    /** Nothing placed for STALL_LIMIT ticks: drop what is left, and name the first few. */
+    private static void stalled(Planner planner, Module module) {
+        List<class_2338> left = new ArrayList<>();
+        for (class_2338 p : targets.keySet()) {
+            if (planner.pending(p)) {
+                left.add(p);
+            }
+        }
+        for (class_2338 p : left) {
+            planner.drop(p);
+            skipped.add(p);
+        }
+        bumpSkipped(module, left.size());
+        StringBuilder names = new StringBuilder();
+        for (int i = 0; i < Math.min(8, left.size()); i++) {
+            class_2338 p = left.get(i);
+            names.append(names.length() > 0 ? ", " : "").append(p.method_10263()).append(' ').append(p.method_10264()).append(' ').append(p.method_10260());
+        }
+        module.warning("Stopped waiting: %d block(s) I can't reach or place facing the right way from here (%s%s). Place those by hand.",
+            new Object[]{left.size(), names.toString(), left.size() > 8 ? ", ..." : ""});
+    }
+
+    /** Blocks dropped because no correctly oriented placement was reachable. */
+    static Set<class_2338> skipped() {
+        return skipped;
+    }
+
+    /**
+     * Where to stand to place pos: the nearest standing cell (feet) from which a placement exists
+     * with the schematic's orientation (or any visible placement when there is none), searched
+     * within reach. Null when no cell can place it. Replaces Stand.find, which only looked at distance
+     * and so picked spots that could not see any face to click.
+     */
+    static class_2338 standFor(class_2338 pos, double reach, Planner planner) {
+        class_310 mc = MeteorClient.mc;
+        if (mc.field_1724 == null || mc.field_1687 == null) {
+            return null;
+        }
+        class_2680 want = targets == null ? null : targets.get(pos);
+        double radius = Math.max(2.0, reach - 0.5);
+        double r2 = radius * radius;
+        double px = mc.field_1724.method_23317(), py = mc.field_1724.method_23318(), pz = mc.field_1724.method_23321();
+        List<Object[]> cands = new ArrayList<>();
+        int bx = pos.method_10263(), by = pos.method_10264(), bz = pos.method_10260();
+        for (int i = bx - 4; i <= bx + 4; i++) {
+            for (int j = bz - 4; j <= bz + 4; j++) {
+                if (!mc.field_1687.method_8393(i >> 4, j >> 4)) {
+                    continue;
+                }
+                for (int k = by - 4; k <= by; k++) {
+                    double dx = i + 0.5 - (bx + 0.5), dy = k + 1.62 - (by + 0.5), dz = j + 0.5 - (bz + 0.5);
+                    if (dx * dx + dy * dy + dz * dz > r2 + 0.5) {
+                        continue;
+                    }
+                    if (i == bx && j == bz && (k == by || k == by - 1)) {
+                        continue;
+                    }
+                    class_2338 c = new class_2338(i, k, j);
+                    if (!Stand.standable(c)) {
+                        continue;
+                    }
+                    double hx = i + 0.5 - px, hz = j + 0.5 - pz;
+                    double score = Math.sqrt(hx * hx + hz * hz) + 3.0 * Math.abs(k - py);
+                    if (planner.pending(c)) {
+                        score += 3.0;
+                    }
+                    if (planner.pending(c.method_10084())) {
+                        score += 3.0;
+                    }
+                    cands.add(new Object[]{score, c});
+                }
+            }
+        }
+        cands.sort((a, b) -> Double.compare((Double) a[0], (Double) b[0]));
+        int checked = 0;
+        for (Object[] c : cands) {
+            if (++checked > 60) {
+                break;
+            }
+            class_2338 cell = (class_2338) c[1];
+            if (want == null || !orientable(want)) {
+                if (best(pos, want, cellEye(cell, 0.5, 0.5), false) != null) {
+                    return cell;
+                }
+            } else if (strictEverywhere(pos, want, cell)) {
+                return cell;
+            }
+        }
+        return null;
+    }
+
+    private static class_243 cellEye(class_2338 cell, double dx, double dz) {
+        return new class_243(cell.method_10263() + dx, cell.method_10264() + 1.62, cell.method_10260() + dz);
+    }
+
+    /**
+     * A standing cell counts only if the correctly oriented placement exists from a 3x3 grid of points
+     * inside it: the player never stops exactly on the centre, and a few tenths of a block changes what
+     * is visible.
+     */
+    private static boolean strictEverywhere(class_2338 pos, class_2680 want, class_2338 cell) {
+        double[][] samples = new double[9][];
+        int n = 0;
+        for (double x : new double[]{0.15, 0.5, 0.85}) {
+            for (double z : new double[]{0.15, 0.5, 0.85}) {
+                samples[n++] = new double[]{x, z};
+            }
+        }
+        for (double[] s : samples) {
+            if (best(pos, want, cellEye(cell, s[0], s[1]), true) == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Start of Look.useCrosshairBlock() and Look.attackCrosshairBlock(): false = don't click this tick.
+     * The crosshair the game clicks with is the one from before this tick's turn, but the server
+     * takes the new rotation (facing) with it, so a click on a tick that turned gives the wrong
+     * state. Turn now, click next tick.
+     */
     static boolean allowClick() {
         if (disabled() || targets == null || !sentKnown) {
             return true;
         }
         try {
             class_310 mc = MeteorClient.mc;
+            class_746 p = mc.field_1724;
+            if (p == null) {
+                return true;
+            }
+            if (Math.abs(p.method_36454() - sentYaw) > 1.0e-4f || Math.abs(p.method_36455() - sentPitch) > 1.0e-4f) {
+                return false;
+            }
             class_239 h = mc.field_1765;
             if (mc.field_1724 == null || mc.field_1687 == null || !(h instanceof class_3965)) {
                 return true;
@@ -196,17 +369,15 @@ final class Guard {
             class_2338 sup = hit.method_17777();
             class_2338 pos = mc.field_1687.method_8320(sup).method_45474() ? sup : sup.method_10093(hit.method_17780());
             class_2680 want = targets.get(pos);
-            if (want == null || Boolean.TRUE.equals(fallback.get(pos)) || !orientable(want)) {
+            if (want == null || !orientable(want)) {
                 return true;
             }
             if (variantOk(want, hit.method_17780()) && matches(predict(want, hit, sentYaw, sentPitch), want)) {
                 gateDenied.remove(pos);
                 return true;
             }
-            int n = gateDenied.merge(pos, 1, Integer::sum);
-            if (n > GATE_FALLBACK) {
-                fallback.put(pos, Boolean.TRUE);
-                return true;
+            if (gateDenied.merge(pos, 1, Integer::sum) > GATE_LIMIT) {
+                giveUp(pos);
             }
             return false;
         } catch (Throwable t) {
@@ -487,12 +658,12 @@ final class Guard {
         clock = 0;
         orientBlocked.clear();
         gateDenied.clear();
-        fallback.clear();
+        skipped.clear();
         Climb.reset();
     }
 
     private static void prune(Planner planner) {
-        for (Map<class_2338, ?> m : List.<Map<class_2338, ?>>of(orientBlocked, gateDenied, fallback)) {
+        for (Map<class_2338, ?> m : List.<Map<class_2338, ?>>of(orientBlocked, gateDenied)) {
             Iterator<class_2338> it = m.keySet().iterator();
             while (it.hasNext()) {
                 if (!planner.pending(it.next())) {
@@ -500,6 +671,36 @@ final class Guard {
                 }
             }
         }
+    }
+
+    /**
+     * Manual walking: true when the player should press forward. Walks onto a free cell with
+     * ground under it, or into a one-block step (Approach jumps when it gets stuck there). Never
+     * walks off an edge. The original version returned true only when a block was ahead.
+     */
+    static boolean groundToward(float yaw) {
+        class_310 mc = MeteorClient.mc;
+        class_746 p = mc.field_1724;
+        if (p == null || mc.field_1687 == null) {
+            return false;
+        }
+        double rad = Math.toRadians(yaw);
+        int fx = (int) Math.floor(p.method_23317() - Math.sin(rad) * 0.8);
+        int fz = (int) Math.floor(p.method_23321() + Math.cos(rad) * 0.8);
+        int fy = (int) Math.floor(p.method_23318() + 0.01);
+        boolean feetFree = clear(fx, fy, fz);
+        boolean headFree = clear(fx, fy + 1, fz);
+        if (feetFree) {
+            return headFree && !clear(fx, fy - 1, fz);
+        }
+        return headFree;
+    }
+
+    private static boolean clear(int x, int y, int z) {
+        class_638 w = MeteorClient.mc.field_1687;
+        class_2338 pos = new class_2338(x, y, z);
+        class_2680 s = w.method_8320(pos);
+        return s.method_26215() || s.method_26220((class_1922) w, pos).method_1110();
     }
 
     static boolean disabled() {

@@ -13,6 +13,7 @@ public class Patch {
         patch(root, "Look", Patch::look);
         patch(root, "Planner", Patch::planner);
         patch(root, "Pillar", Patch::pillar);
+        patch(root, "Stand", Patch::stand);
         patch(root, "OnlyBuild", cn -> { hook(cn); settings(cn, true); climbHooks(cn, true); });
         patch(root, "HumanBuilder", cn -> { hook(cn); settings(cn, false); climbHooks(cn, false); });
     }
@@ -43,6 +44,13 @@ public class Patch {
     }
 
     static void look(ClassNode cn) {
+        // groundToward(float): return Guard.groundToward(f)
+        MethodNode g = method(cn, "groundToward", "(F)Z");
+        InsnList gl = new InsnList();
+        gl.add(new VarInsnNode(Opcodes.FLOAD, 0));
+        gl.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PKG + "Guard", "groundToward", "(F)Z", false));
+        gl.add(new InsnNode(Opcodes.IRETURN));
+        replaceBody(g, gl);
         // useCrosshairBlock(): if (!Guard.allowClick()) return false;
         MethodNode u = method(cn, "useCrosshairBlock", "()Z");
         LabelNode ok = new LabelNode();
@@ -55,11 +63,36 @@ public class Patch {
         gate.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
         u.instructions.insert(gate);
 
+        // attackCrosshairBlock(): if (!Guard.allowClick()) return false;   (same rule for mining)
+        MethodNode a = method(cn, "attackCrosshairBlock", "()Z");
+        LabelNode aok = new LabelNode();
+        InsnList agate = new InsnList();
+        agate.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PKG + "Guard", "allowClick", "()Z", false));
+        agate.add(new JumpInsnNode(Opcodes.IFNE, aok));
+        agate.add(new InsnNode(Opcodes.ICONST_0));
+        agate.add(new InsnNode(Opcodes.IRETURN));
+        agate.add(aok);
+        agate.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+        a.instructions.insert(agate);
+
         MethodNode m = method(cn, "findPlacement", "(Lnet/minecraft/class_2338;)L" + PKG + "Look$Placement;");
         InsnList il = new InsnList();
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
         il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PKG + "Guard", "findPlacement",
             "(Lnet/minecraft/class_2338;)L" + PKG + "Look$Placement;", false));
+        il.add(new InsnNode(Opcodes.ARETURN));
+        replaceBody(m, il);
+    }
+
+    /** Stand.find(pos, reach, planner) -> Guard.standFor(pos, reach, planner) */
+    static void stand(ClassNode cn) {
+        MethodNode m = method(cn, "find", "(Lnet/minecraft/class_2338;DL" + PKG + "Planner;)Lnet/minecraft/class_2338;");
+        InsnList il = new InsnList();
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new VarInsnNode(Opcodes.DLOAD, 1));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PKG + "Guard", "standFor",
+            "(Lnet/minecraft/class_2338;DL" + PKG + "Planner;)Lnet/minecraft/class_2338;", false));
         il.add(new InsnNode(Opcodes.ARETURN));
         replaceBody(m, il);
     }
