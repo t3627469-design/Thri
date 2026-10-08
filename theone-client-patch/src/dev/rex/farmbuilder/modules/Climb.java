@@ -45,6 +45,7 @@ final class Climb {
     private static int clock;
     private static int lastSize = -1;
     private static int lastProgress;
+    private static int lastStallNote = -100000;
     private static int climbLevel = Integer.MIN_VALUE;
     private static class_2338 climbGoal;
     private static class_2338 climbTarget;
@@ -114,9 +115,16 @@ final class Climb {
         if (mode == Pillar.Mode.WALK || mode == Pillar.Mode.UP) {
             return runClimb(planner, m, mode);
         }
-        if (mode == Pillar.Mode.HOLD && (planner.isEmpty() || clock - lastProgress > STALL_TICKS)) {
-            pillar.beginDown();
-            return true;
+        if (mode == Pillar.Mode.HOLD) {
+            if (planner.isEmpty()) {
+                m.info("Build finished. Taking the pillar down.", new Object[0]);
+                pillar.beginDown();
+                return true;
+            }
+            if (clock - lastProgress > STALL_TICKS && clock - lastStallNote > STALL_TICKS) {
+                lastStallNote = clock;
+                m.warning("Up on the build but nothing here is reachable right now (%d blocks left). Keeping the pillar up; it won't come down until the build is done.", new Object[]{planner.size()});
+            }
         }
         return false;
     }

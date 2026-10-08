@@ -10,5 +10,5 @@
 - Build up, both only-build and human-builder, creative and survival, no flying (flight is switched off when the
   builder has to move): when the spot to stand on is 2+ blocks up, it builds a pillar of spare blocks (cobblestone, dirt, ...) beside
   the build (cobblestone in creative), climbs it, steps onto the finished layers and keeps building from there. The pillar is mined down when
-  the build is done, stalls for a minute, or human-builder leaves to shop/fetch.
+  the build is done, or human-builder leaves to shop/fetch. It no longer comes down just because nothing was reachable for a minute; it keeps the pillar and posts a warning instead.
 - Any error in the new code switches the new code off after 3 hits and the original behaviour takes over.
