@@ -1,0 +1,11 @@
+{
+  "name": "Zip to Jar",
+  "short_name": "Zip2Jar",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#14181f",
+  "theme_color": "#14181f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
