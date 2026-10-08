@@ -13,6 +13,14 @@
   the build is done, or human-builder leaves to shop/fetch. It no longer comes down just because nothing was reachable for a minute; it keeps the pillar and posts a warning instead.
 - Any error in the new code switches the new code off after 3 hits and the original behaviour takes over.
 
+1.6.2 (floating blocks are reported)
+- When every block left to build floats (no placed block beside it to click), only-build and the printer now say so
+  in chat: how many blocks float and what to do. Before, they quietly ended with "Done: N placed, M skipped".
+- Only-build places a block only against a block that is already there. The bundled Sweet Berries farm is mostly
+  floating: most of its blocks sit in pieces with nothing in the schematic beside them, so only the part that touches
+  the ground can be built, and the rest is reported. Building floating parts needs temporary support blocks, which
+  this version does not place.
+
 1.6.1 (printer walks when nothing is in reach)
 - Printer module (TheOne > printer) now moves. Each build tick it places the nearest block in reach that can be
   placed facing right: it turns to look at it and clicks. When nothing in reach can be placed, the bot walks to the

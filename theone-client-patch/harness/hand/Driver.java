@@ -48,14 +48,22 @@ public class Driver {
                 target.put(new class_2338(x, y, z), st);
             }
         }
+        if (System.getenv("FARM") != null) {
+            // the bundled farm instead of the tower: ground under its footprint, creative-style supply
+            target = FarmLoad.load(System.getenv("FARM"));
+            for (int x = -3; x <= 65; x++) for (int z = -3; z <= 57; z++) sim.world.method_8501(new class_2338(x, -1, z), new class_2680(stone, stone.defaults));
+            sim.player.method_31549().field_7477 = true;
+        }
         System.out.println("schematic blocks: " + target.size());
 
         // inventory: hotbar 0 stone, 1 stairs, 2 cobblestone (pillar spare)
         class_1661 inv = sim.player.inventory;
         inv.method_5447(0, new class_1799(class_1792.BY_NAME.get("minecraft:stone")));
         inv.method_5438(0).method_7939(200);
-        inv.method_5447(1, new class_1799(class_1792.BY_NAME.get("minecraft:oak_stairs")));
-        inv.method_5438(1).method_7939(40);
+        if (System.getenv("NO_STAIRS") == null) {
+            inv.method_5447(1, new class_1799(class_1792.BY_NAME.get("minecraft:oak_stairs")));
+            inv.method_5438(1).method_7939(40);
+        }
         inv.method_5447(2, new class_1799(class_1792.BY_NAME.get("minecraft:cobblestone")));
         inv.method_5438(2).method_7939(64);
 

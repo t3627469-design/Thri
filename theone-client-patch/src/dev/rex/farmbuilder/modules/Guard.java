@@ -65,6 +65,7 @@ final class Guard {
     private static int lastProgress;
     /** Printer mode: no planner, no walking. Each tick the nearest reachable block that can be placed facing right is looked at and placed. */
     static boolean printing;
+    private static int lastFloatNote = -100000;
     private static final Map<class_2338, Integer> lastTry = new HashMap<>();
     private static final Map<class_2338, Integer> snaps = new HashMap<>();
     private static final int PRINT_SNAPS = 3;
@@ -123,6 +124,9 @@ final class Guard {
         }
         if (mc.field_1755 != null || disabled()) {
             return false;
+        }
+        if (clock % 20 == 0) {
+            floatingCheck(wanted, planner, module);
         }
         if (printing && !Climb.pillarBusy() && printerStep(wanted, module)) {
             return true;
@@ -238,6 +242,29 @@ final class Guard {
         } catch (ReflectiveOperationException | RuntimeException e) {
             error(e);
         }
+    }
+
+    /**
+     * Every pending block is floating: none has a placed block beside it to click, so there is nothing
+     * only-build can place. Says so (once a minute) instead of quietly giving up later.
+     */
+    private static void floatingCheck(Map<class_2338, class_2680> wanted, Planner planner, Module module) {
+        int floating = 0;
+        for (class_2338 p : wanted.keySet()) {
+            if (!planner.pending(p)) {
+                continue;
+            }
+            if (Planner.hasSupport(p)) {
+                return;
+            }
+            floating++;
+        }
+        if (floating == 0 || clock - lastFloatNote < 1200) {
+            return;
+        }
+        lastFloatNote = clock;
+        module.warning("%d block(s) float: nothing is placed beside them to click, and only-build can only place a block against one that is already there. Place one block against each floating part by hand, or use a schematic that touches the ground.",
+            new Object[]{floating});
     }
 
     /** Nothing placed for STALL_LIMIT ticks: drop what is left, and name the first few. */
