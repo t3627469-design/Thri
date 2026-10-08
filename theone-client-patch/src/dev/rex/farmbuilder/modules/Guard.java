@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.systems.modules.Module;
@@ -63,6 +64,13 @@ final class Guard {
     private static Module curModule;
     private static int lastSize = -1;
     private static int lastProgress;
+    /** Printer mode: no planner, no walking. Each tick the nearest reachable block that can be placed facing right is looked at and placed. */
+    static boolean printing;
+    private static final Random idle = new Random();
+    private static final Map<class_2338, Integer> lastTry = new HashMap<>();
+    private static final Map<class_2338, Integer> snaps = new HashMap<>();
+    private static final int PRINT_SNAPS = 3;
+    private static boolean printWarned;
     private static final Map<class_2680, Boolean> orientableCache = new HashMap<>();
     private static int errors;
 
@@ -111,9 +119,12 @@ final class Guard {
         if (planner.size() != lastSize) {
             lastSize = planner.size();
             lastProgress = clock;
-        } else if (clock - lastProgress > STALL_LIMIT && planner.size() > 0) {
+        } else if (!printing && clock - lastProgress > STALL_LIMIT && planner.size() > 0) {
             stalled(planner, module);
             lastProgress = clock;
+        }
+        if (printing) {
+            return true;
         }
         if (mc.field_1755 != null || disabled()) {
             return false;
@@ -184,7 +195,7 @@ final class Guard {
             Integer since = orientBlocked.get(pos);
             if (since == null) {
                 orientBlocked.put(pos, clock);
-            } else if (clock - since > GIVE_UP_TICKS) {
+            } else if (!printing && clock - since > GIVE_UP_TICKS) {
                 giveUp(pos);
             }
             return null;
@@ -207,6 +218,14 @@ final class Guard {
             curModule.warning("Skipped %s: I can't place it facing the right way from anywhere I can reach. Place it by hand.",
                 new Object[]{pos.method_10263() + " " + pos.method_10264() + " " + pos.method_10260()});
         }
+    }
+
+    /** A block can't be placed into the cell the player is standing in (the player's box overlaps it). */
+    static boolean overlapsPlayer(class_2338 p, class_746 pl) {
+        double x = pl.method_23317(), y = pl.method_23318(), z = pl.method_23321();
+        return p.method_10263() < x + 0.3 && p.method_10263() + 1 > x - 0.3
+            && p.method_10260() < z + 0.3 && p.method_10260() + 1 > z - 0.3
+            && p.method_10264() < y + 1.8 && p.method_10264() + 1 > y;
     }
 
     /** Adds to the module's own skipped count so its "Done: N placed, M skipped" line stays true. */
@@ -243,6 +262,102 @@ final class Guard {
         }
         module.warning("Stopped waiting: %d block(s) I can't reach or place facing the right way from here (%s%s). Place those by hand.",
             new Object[]{left.size(), names.toString(), left.size() > 8 ? ", ..." : ""});
+    }
+
+    /**
+     * Turns printer mode on or off. On: the player's movement keys are let go once, so a walk the bot
+     * started by hand stops; after that the bot only turns and clicks.
+     */
+    static void setPrinting(boolean on) {
+        printing = on;
+        printWarned = false;
+        lastTry.clear();
+        snaps.clear();
+        if (on) {
+            Look.releaseMovementKeys();
+        }
+    }
+
+    /**
+     * One printer tick: the nearest block in reach that can be placed facing right is looked at (smoothly,
+     * so the turn is visible) and placed. No planner, no walking; the player moves.
+     */
+    static void printerTick(Map<class_2338, class_2680> wanted, int speedLevel, double reach, Module module) {
+        class_310 mc = MeteorClient.mc;
+        if (mc.field_1724 == null || mc.field_1687 == null || mc.field_1755 != null || wanted == null || wanted.isEmpty()) {
+            return;
+        }
+        if (targets != wanted) {
+            reset(wanted);
+        }
+        sentYaw = mc.field_1724.method_36454();
+        sentPitch = mc.field_1724.method_36455();
+        sentKnown = true;
+        ++clock;
+        class_243 eye = mc.field_1724.method_33571();
+        Look.Placement pick = null;
+        class_2338 pickPos = null;
+        double pickD = Double.MAX_VALUE;
+        for (Map.Entry<class_2338, class_2680> e : wanted.entrySet()) {
+            class_2338 p = e.getKey();
+            double d = eye.method_1022(class_243.method_24953(p));
+            if (d > reach + 0.5 || d >= pickD) {
+                continue;
+            }
+            if (mc.field_1687.method_8320(p).equals(e.getValue())) {
+                continue;
+            }
+            Integer tried = lastTry.get(p);
+            if (tried != null && clock - tried < 8) {
+                continue;
+            }
+            if (overlapsPlayer(p, mc.field_1724)) {
+                continue;
+            }
+            Look.Placement pl = findPlacement(p);
+            if (pl == null) {
+                continue;
+            }
+            pick = pl;
+            pickPos = p;
+            pickD = d;
+        }
+        if (pick == null) {
+            Look.idleLook(idle);
+            return;
+        }
+        class_1792 item = wanted.get(pickPos).method_26204().method_8389();
+        if (!Look.selectHotbar(stack -> stack.method_7909() == item)) {
+            if (!printWarned) {
+                printWarned = true;
+                module.warning("I need %s in the hotbar to print it.", new Object[]{item});
+            }
+            return;
+        }
+        printWarned = false;
+        boolean aligned = Look.lookAt(pick.hit(), (float) speedProfile(speedLevel)[2]);
+        if (!aligned) {
+            return;
+        }
+        if (!Look.crosshairOn(pick.against(), pick.side())) {
+            // Within the aim tolerance (1.5 degrees) but the crosshair still misses: the spot is a corner and the
+            // ray grazes a neighbour. Snap onto the exact angles (a fraction of a degree, invisible); after a few
+            // misses, leave this block for a while and try the next one.
+            int misses = snaps.merge(pickPos, 1, Integer::sum);
+            if (misses > PRINT_SNAPS) {
+                snaps.remove(pickPos);
+                lastTry.put(pickPos, clock + 40);
+                return;
+            }
+            float[] ang = Look.anglesTo(pick.hit());
+            mc.field_1724.method_36456(ang[0]);
+            mc.field_1724.method_36457(ang[1]);
+            return;
+        }
+        if (Look.useCrosshairBlock()) {
+            snaps.remove(pickPos);
+            lastTry.put(pickPos, clock);
+        }
     }
 
     /** Blocks dropped because no correctly oriented placement was reachable. */
@@ -376,7 +491,7 @@ final class Guard {
                 gateDenied.remove(pos);
                 return true;
             }
-            if (gateDenied.merge(pos, 1, Integer::sum) > GATE_LIMIT) {
+            if (gateDenied.merge(pos, 1, Integer::sum) > GATE_LIMIT && !printing) {
                 giveUp(pos);
             }
             return false;

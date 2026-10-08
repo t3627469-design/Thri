@@ -8,6 +8,8 @@ public abstract class Module {
     public Module(Category c, String name, String description) { this.name = name; }
     public boolean isActive() { return true; }
     public void toggle() { }
+    public void onActivate() { }
+    public void onDeactivate() { }
     public void info(String fmt, Object... args) { System.out.println("[info] " + String.format(fmt, args)); }
     public void warning(String fmt, Object... args) { System.out.println("[WARN] " + String.format(fmt, args)); }
     public void error(String fmt, Object... args) { System.out.println("[ERROR] " + String.format(fmt, args)); }

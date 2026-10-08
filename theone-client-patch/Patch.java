@@ -14,6 +14,7 @@ public class Patch {
         patch(root, "Planner", Patch::planner);
         patch(root, "Pillar", Patch::pillar);
         patch(root, "Stand", Patch::stand);
+        patchAt(root, "dev/rex/farmbuilder/FarmBuilderAddon", Patch::addon);
         patch(root, "OnlyBuild", cn -> { hook(cn); settings(cn, true); climbHooks(cn, true); });
         patch(root, "HumanBuilder", cn -> { hook(cn); settings(cn, false); climbHooks(cn, false); });
     }
@@ -29,6 +30,17 @@ public class Patch {
         cn.accept(cw);
         Files.write(f, cw.toByteArray());
         System.out.println("patched " + name);
+    }
+
+    static void patchAt(Path root, String internalName, P p) throws IOException {
+        Path f = root.resolve(internalName + ".class");
+        ClassNode cn = new ClassNode();
+        new ClassReader(Files.readAllBytes(f)).accept(cn, 0);
+        p.run(cn);
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        cn.accept(cw);
+        Files.write(f, cw.toByteArray());
+        System.out.println("patched " + internalName);
     }
 
     static MethodNode method(ClassNode cn, String name, String desc) {
@@ -95,6 +107,25 @@ public class Patch {
             "(Lnet/minecraft/class_2338;DL" + PKG + "Planner;)Lnet/minecraft/class_2338;", false));
         il.add(new InsnNode(Opcodes.ARETURN));
         replaceBody(m, il);
+    }
+
+    /** FarmBuilderAddon.onInitialize(): Modules.get().add(new Printer()) before the final return. */
+    static void addon(ClassNode cn) {
+        MethodNode m = method(cn, "onInitialize", "()V");
+        InsnList il = new InsnList();
+        il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "meteordevelopment/meteorclient/systems/modules/Modules", "get",
+            "()Lmeteordevelopment/meteorclient/systems/modules/Modules;", false));
+        il.add(new TypeInsnNode(Opcodes.NEW, PKG + "Printer"));
+        il.add(new InsnNode(Opcodes.DUP));
+        il.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, PKG + "Printer", "<init>", "()V", false));
+        il.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "meteordevelopment/meteorclient/systems/modules/Modules", "add",
+            "(Lmeteordevelopment/meteorclient/systems/modules/Module;)V", false));
+        AbstractInsnNode ret = null;
+        for (AbstractInsnNode i = m.instructions.getFirst(); i != null; i = i.getNext()) {
+            if (i.getOpcode() == Opcodes.RETURN) ret = i;
+        }
+        if (ret == null) throw new IllegalStateException("onInitialize has no return");
+        m.instructions.insertBefore(ret, il);
     }
 
     static void planner(ClassNode cn) {

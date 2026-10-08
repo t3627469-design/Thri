@@ -142,6 +142,11 @@ final class Climb {
         }
         double reach = reach(m);
         landIfFlying();
+        if (Guard.printing) {
+            // printer mode: the player does the moving; out-of-reach blocks just wait
+            walker.stop();
+            return true;
+        }
         Pillar.Mode pm = pillar.mode();
         if (underUs || pm == Pillar.Mode.WALK || pm == Pillar.Mode.UP || pm == Pillar.Mode.DOWN) {
             return false;

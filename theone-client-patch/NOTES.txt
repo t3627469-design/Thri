@@ -13,6 +13,12 @@
   the build is done, or human-builder leaves to shop/fetch. It no longer comes down just because nothing was reachable for a minute; it keeps the pillar and posts a warning instead.
 - Any error in the new code switches the new code off after 3 hits and the original behaviour takes over.
 
+1.6.0 (printer)
+- Printer module (TheOne > printer): place the only-build schematic from where you stand. Every tick it finds the
+  nearest block in reach that can be placed facing right, turns to look at it, and places it. It never walks or
+  climbs; you do the moving. Turn it on, pick the schematic and speed in only-build's settings, and it runs.
+- Shipped the stand-spot search (Stand.find) for real: the 1.5.0 packager left Stand.class out of the jar.
+
 1.5.0 (only-build rebuilt around the real placement rules; tested in an offline simulator)
 - Never places a block the wrong way: a block is placed only when the click will produce the schematic state
   (stairs facing and half, logs, slabs, buttons, ...). Removed the old "place it wrong after a timeout" fallback.
