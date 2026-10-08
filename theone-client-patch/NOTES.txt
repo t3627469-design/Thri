@@ -1,16 +1,14 @@
 
 
-1.4.0 (TheOne patch: placement brain, instinct speed, build up)
+1.4.1 (TheOne patch: placement brain, instinct speed, build up)
 - Right orientation, first time: before every click it runs Minecraft's own placement logic for that exact click
   (face, hit point and the rotation the server will see) and only clicks when the result matches the schematic:
   facing, axis, stair/slab/trapdoor half, button/lever face, sign/banner/skull rotation, door hinge, wall vs floor
   torches/signs/banners/heads. It picks a face and spot that work; if a block can't be oriented right from anywhere
   for ~10 seconds it is placed anyway so the build never stalls.
 - speed 6 = instinct: no delay, instant aim, one block per tick. only-build defaults to 6.
-- Build up, both only-build and human-builder:
-  Creative: flies straight to a spot the block can be placed from (path-searched around/over the build, no keys held,
-  no Baritone), then places.
-  Survival: when the spot to stand on is 2+ blocks up, builds a pillar of spare blocks (cobblestone, dirt, ...) beside
-  the build, climbs it, steps onto the finished layers and keeps building from there. The pillar is mined down when
+- Build up, both only-build and human-builder, creative and survival, no flying (flight is switched off when the
+  builder has to move): when the spot to stand on is 2+ blocks up, it builds a pillar of spare blocks (cobblestone, dirt, ...) beside
+  the build (cobblestone in creative), climbs it, steps onto the finished layers and keeps building from there. The pillar is mined down when
   the build is done, stalls for a minute, or human-builder leaves to shop/fetch.
 - Any error in the new code switches the new code off after 3 hits and the original behaviour takes over.

@@ -12,6 +12,3 @@ javac -nowarn -cp $CP -d build/patch Patch.java
 java -cp build/patch:$CP Patch build/work
 cp build/guard/dev/rex/farmbuilder/modules/*.class build/work/dev/rex/farmbuilder/modules/
 python3 repack.py "$1" "$2"
-mkdir -p build/test
-javac -nowarn -d build/test src/dev/rex/farmbuilder/modules/FlyMath.java test/FlyTest.java
-java -cp build/test dev.rex.farmbuilder.modules.FlyTest

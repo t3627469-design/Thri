@@ -2,7 +2,7 @@ import sys, zipfile, os
 src, out = sys.argv[1], sys.argv[2]
 W = 'build/work/'
 mod = {'dev/rex/farmbuilder/modules/' + n + '.class' for n in ['Look', 'Planner', 'Pillar', 'OnlyBuild', 'HumanBuilder']}
-VERSION = os.environ.get('VERSION', '1.4.0')
+VERSION = os.environ.get('VERSION', '1.4.1')
 zi = zipfile.ZipFile(src)
 with zipfile.ZipFile(out, 'w') as zo:
     for it in zi.infolist():
