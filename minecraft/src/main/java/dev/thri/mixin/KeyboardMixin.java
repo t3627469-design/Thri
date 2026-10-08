@@ -16,16 +16,23 @@ public abstract class KeyboardMixin {
 
     @Inject(method = "onKey", at = @At("HEAD"))
     private void thri$onKey(long window, int key, int scancode, int action, int modifiers, CallbackInfo ci) {
-        if (window != MinecraftClient.getInstance().getWindow().getHandle()) return;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (window != mc.getWindow().getHandle()) return;
         if (action != GLFW.GLFW_PRESS) return;
-        if (MinecraftClient.getInstance().currentScreen != null
-                && !(MinecraftClient.getInstance().currentScreen instanceof ClickGuiScreen)) return;
         if (Thri.MODULES == null) return;
+
         ClickGuiModule gui = Thri.MODULES.get(ClickGuiModule.class);
-        if (gui != null && key == gui.getKey()) {
-            MinecraftClient.getInstance().setScreen(new ClickGuiScreen());
+        int guiKey = gui == null ? 0 : gui.getKey();
+
+        // RSHIFT toggles the ClickGUI from either state
+        if (guiKey != 0 && key == guiKey) {
+            if (mc.currentScreen instanceof ClickGuiScreen) mc.setScreen(null);
+            else if (mc.currentScreen == null)             mc.setScreen(new ClickGuiScreen());
             return;
         }
+
+        // Other hotkeys fire only in gameplay, never while any screen is open
+        if (mc.currentScreen != null) return;
         Thri.MODULES.onKey(key);
     }
 }
