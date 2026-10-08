@@ -213,6 +213,60 @@ final class Guard {
         cooldown.clear();
         giveUps.clear();
         unfixable.clear();
+        Climb.reset();
+    }
+
+    static boolean isTarget(class_2338 p) {
+        return targets != null && targets.containsKey(p);
+    }
+
+    static Iterable<class_2338> targetKeys() {
+        return targets == null ? java.util.List.<class_2338>of() : targets.keySet();
+    }
+
+    private static int errors;
+
+    static boolean goToward(Module m, Planner planner, class_2338 target, boolean underUs) {
+        if (disabled()) {
+            return false;
+        }
+        try {
+            return Climb.goToward(m, planner, target, underUs);
+        } catch (Throwable t) {
+            error(t);
+            return false;
+        }
+    }
+
+    static boolean always(Module m) {
+        if (disabled()) {
+            return false;
+        }
+        try {
+            return Climb.always(m);
+        } catch (Throwable t) {
+            error(t);
+            return false;
+        }
+    }
+
+    static Approach flightApproach() {
+        return disabled() ? null : Climb.flightApproach();
+    }
+
+    static boolean pillarReady(net.minecraft.class_746 player) {
+        return Climb.pillarReady(player);
+    }
+
+    static boolean disabled() {
+        return errors >= 3;
+    }
+
+    static void error(Throwable t) {
+        if (++errors <= 3) {
+            System.out.println("[TheOne guard] " + t);
+            t.printStackTrace();
+        }
     }
 
     /**
@@ -228,6 +282,13 @@ final class Guard {
             reset(wanted);
         }
         ++clock;
+        try {
+            if (!disabled() && Climb.tick(planner, module)) {
+                return true;
+            }
+        } catch (Throwable t) {
+            error(t);
+        }
         if (fixPos != null) {
             return fix(planner, module);
         }
