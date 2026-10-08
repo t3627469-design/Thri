@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "theone-client",
+  "version": "2.0.0",
+  "name": "TheOne Client",
+  "description": "Schematic Builder for Meteor: builds .litematic/.schem/.nbt schematics with orientation-aware placing, auto walking, pillaring up, farmland and water.",
+  "authors": [
+    "TheOne"
+  ],
+  "environment": "client",
+  "entrypoints": {
+    "meteor": [
+      "dev.theone.schematic.TheOneAddon"
+    ]
+  },
+  "custom": {
+    "meteor-client:color": "0,224,255",
+    "modmenu": {
+      "parent": {
+        "id": "meteor-client"
+      }
+    }
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": "1.21.11",
+    "meteor-client": "*",
+    "fabricloader": ">=0.18.2"
+  }
+}
